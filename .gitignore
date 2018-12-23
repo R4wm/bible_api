@@ -12,3 +12,6 @@
 *.out
 
 *~
+
+# Ignore certain binaries
+deploy
