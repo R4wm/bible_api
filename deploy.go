@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	"net/http"
 
@@ -92,6 +93,8 @@ func GetChapter(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("406 - book param not found."))
 		return
 	}
+
+	book[0] = strings.ToUpper(book[0])
 
 	chapter, ok := r.URL.Query()["chapter"]
 	if !ok {
