@@ -1,5 +1,8 @@
 package main
 
+/////////////
+// Imports //
+/////////////
 import (
 	"database/sql"
 	"encoding/json"
@@ -15,12 +18,33 @@ import (
 	"github.com/r4wm/kjvapi"
 )
 
-var DB *sql.DB
+/////////////
+// Structs //
+/////////////
+//Book Name of Book and how many chapters contained in that book.
+type Book struct {
+	Name     string
+	Chapters int
+}
+
+// KJVMapping static mapping containing books and number of chapters per book.
+type KJVMapping struct {
+	Books []Book
+}
 
 type response struct {
 	Text string `json:"text"`
 }
 
+//////////
+// Vars //
+//////////
+var DB *sql.DB
+var Mapping KJVMapping
+
+///////////////
+// Functions //
+///////////////
 // helloWorld basic handler function
 func helloWorld(w http.ResponseWriter, r *http.Request) {
 	basicResponse := &response{Text: "Hello World " + r.URL.Path[:]}
@@ -33,18 +57,7 @@ func helloWorld(w http.ResponseWriter, r *http.Request) {
 
 // GetBooks retrieve list of books from the kjv db
 func GetBooks(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%#v\n", r)
-	var books []string
-	var bookName string
-
-	rows, _ := DB.Query("select distinct book from kjv")
-
-	for rows.Next() {
-		rows.Scan(&bookName)
-		books = append(books, bookName)
-	}
-
-	jsonResponse, err := json.Marshal(books)
+	jsonResponse, err := json.Marshal(Mapping)
 
 	if err != nil {
 		log.Fatal("Could not marshal books")
@@ -81,6 +94,8 @@ func GetChapter(w http.ResponseWriter, r *http.Request) {
 	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", book[0], chapter[0])
 
 	rows, err := DB.Query(stmt)
+	defer rows.Close()
+
 	if err != nil {
 		log.Println(err)
 		log.Printf("database: %#v\n", DB)
@@ -112,6 +127,8 @@ func GetChapter(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	fmt.Printf("Mapping: %#v\n", Mapping)
+
 	/////////////////
 	// Args	       //
 	/////////////////
@@ -130,12 +147,51 @@ func main() {
 			kjvapi.CreateKJVDB(*dbPath)
 		}
 	}
+
+	fmt.Println("dbPath: ", *dbPath)
+	fmt.Println("createDB: ", *createDB)
 	////////////////////////////////
 	// Database Connection	      //
 	////////////////////////////////
 	DB, _ = sql.Open("sqlite3", *dbPath)
 	fmt.Println(fmt.Sprintf("%T\n", DB))
 	log.Printf("Running server using database at: %s\n", *dbPath)
+
+	/////////////////////////////
+	// Populate Mapping	   //
+	/////////////////////////////
+	// Cant do this part in an init() cause it will run before main and we havent spec'd the db from args
+	// TODO: Maybe make db location fixed..
+	// populate the Book struct
+	rows, _ := DB.Query("select distinct book from kjv")
+	defer rows.Close()
+
+	for rows.Next() {
+		var bookName string
+		rows.Scan(&bookName)
+		book := Book{Name: bookName}
+
+		chaptersQuery := fmt.Sprintf("select max(chapter) from kjv where book=\"%s\"", bookName)
+		fmt.Println(chaptersQuery)
+		rowsForChapterCount, err := DB.Query(chaptersQuery)
+		defer rowsForChapterCount.Close()
+
+		if err != nil {
+			log.Fatalf("Failed query on %s\n", chaptersQuery)
+		}
+
+		for rowsForChapterCount.Next() {
+			err := rowsForChapterCount.Scan(&book.Chapters)
+			if err != nil {
+				log.Fatalf("Could not get %s from db.\n", bookName)
+			}
+
+			Mapping.Books = append(Mapping.Books, book)
+		}
+
+	}
+	fmt.Printf("Mapping: %#v\n", Mapping)
+
 	/////////////////////
 	// Handlers	   //
 	/////////////////////
