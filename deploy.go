@@ -1,11 +1,15 @@
 package main
 
+/////////////
+// Imports //
+/////////////
 import (
 	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -14,10 +18,42 @@ import (
 	"github.com/r4wm/kjvapi"
 )
 
-var DB *sql.DB
+/////////////
+// Structs //
+/////////////
+type Book struct {
+	Name  string
+	Books int
+}
+
+type KJVMapping struct {
+	Books []Book
+}
 
 type response struct {
 	Text string `json:"text"`
+}
+
+//////////
+// Vars //
+//////////
+var DB *sql.DB
+var Mapping KJVMapping
+
+///////////////
+// Functions //
+///////////////
+func init() {
+	// populate the Book struct
+	rows, _ := DB.Query("select distinct books from kjv")
+
+	for rows.Next() {
+		var bookName string
+		rows.Scan(&bookName)
+		book := Book{Name: bookName}
+		Mapping.Books = append(Mapping.Books, book)
+	}
+	// populates KJVMapping list
 }
 
 // helloWorld basic handler function
@@ -30,38 +66,9 @@ func helloWorld(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(jsonResponse))
 }
 
-func gimmeVerse(w http.ResponseWriter, r *http.Request) {
-
-	//Static stuff for now
-	verseResponse := kjvapi.KJVChapter{}
-	verseResponse.Chapter = 1
-
-	rows, _ := DB.Query("select verse, text from kjv where book = 'Genesis' and chapter = 1")
-
-	var text string
-	var verse int
-
-	for rows.Next() {
-		rows.Scan(&verse, &text)
-		verseResponse.Verses = append(verseResponse.Verses,
-			kjvapi.KJVVerse{
-				Verse: verse,
-				Text:  text})
-
-	}
-
-	jsonResponse, err := json.Marshal(verseResponse)
-
-	// TODO Change this to a 500 response or something
-	if err != nil {
-		panic(err)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, string(jsonResponse))
-}
-
 // GetBooks retrieve list of books from the kjv db
 func GetBooks(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%#v\n", r)
 	var books []string
 	var bookName string
 
@@ -84,6 +91,8 @@ func GetBooks(w http.ResponseWriter, r *http.Request) {
 
 // GetChapter print the book, chapter and verses in json format
 func GetChapter(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%#v\n", r)
+
 	var verses []kjvapi.KJVVerse
 
 	book, ok := r.URL.Query()["book"]
@@ -144,23 +153,28 @@ func main() {
 	createDB := flag.Bool("createDB", false, "create database")
 	dbPath := flag.String("dbPath", "", "path to datebase")
 	flag.Parse()
-	/////////////////////
-	// CreateDB	   //
-	/////////////////////
-	if *createDB && len(*dbPath) > 0 {
-		kjvapi.CreateKJVDB(*dbPath)
 
+	if len(*dbPath) == 0 {
+		log.Fatalf("Must provide dbPath")
+	}
+
+	if _, err := os.Stat(*dbPath); os.IsNotExist(err) {
+		if *createDB == false {
+			log.Fatalf("database file does not exist: %s\n", *dbPath)
+		} else {
+			kjvapi.CreateKJVDB(*dbPath)
+		}
 	}
 	////////////////////////////////
 	// Database Connection	      //
 	////////////////////////////////
 	DB, _ = sql.Open("sqlite3", *dbPath)
 	fmt.Println(fmt.Sprintf("%T\n", DB))
+	log.Printf("Running server using database at: %s\n", *dbPath)
 	/////////////////////
 	// Handlers	   //
 	/////////////////////
 	http.HandleFunc("/", helloWorld)
-	http.HandleFunc("/gimmeVerse", gimmeVerse)
 	http.HandleFunc("/get_books", GetBooks)
 	http.HandleFunc("/get_chapter", GetChapter)
 	http.ListenAndServe(":8000", nil)
