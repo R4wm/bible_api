@@ -21,11 +21,13 @@ import (
 /////////////
 // Structs //
 /////////////
+//Book Name of Book and how many chapters contained in that book.
 type Book struct {
 	Name     string
 	Chapters int
 }
 
+// KJVMapping static mapping containing books and number of chapters per book.
 type KJVMapping struct {
 	Books []Book
 }
@@ -55,18 +57,7 @@ func helloWorld(w http.ResponseWriter, r *http.Request) {
 
 // GetBooks retrieve list of books from the kjv db
 func GetBooks(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%#v\n", r)
-	var books []string
-	var bookName string
-
-	rows, _ := DB.Query("select distinct book from kjv")
-
-	for rows.Next() {
-		rows.Scan(&bookName)
-		books = append(books, bookName)
-	}
-
-	jsonResponse, err := json.Marshal(books)
+	jsonResponse, err := json.Marshal(Mapping)
 
 	if err != nil {
 		log.Fatal("Could not marshal books")
@@ -103,6 +94,8 @@ func GetChapter(w http.ResponseWriter, r *http.Request) {
 	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", book[0], chapter[0])
 
 	rows, err := DB.Query(stmt)
+	defer rows.Close()
+
 	if err != nil {
 		log.Println(err)
 		log.Printf("database: %#v\n", DB)
@@ -171,6 +164,7 @@ func main() {
 	// TODO: Maybe make db location fixed..
 	// populate the Book struct
 	rows, _ := DB.Query("select distinct book from kjv")
+	defer rows.Close()
 
 	for rows.Next() {
 		var bookName string
@@ -180,6 +174,8 @@ func main() {
 		chaptersQuery := fmt.Sprintf("select max(chapter) from kjv where book=\"%s\"", bookName)
 		fmt.Println(chaptersQuery)
 		rowsForChapterCount, err := DB.Query(chaptersQuery)
+		defer rowsForChapterCount.Close()
+
 		if err != nil {
 			log.Fatalf("Failed query on %s\n", chaptersQuery)
 		}
@@ -187,7 +183,7 @@ func main() {
 		for rowsForChapterCount.Next() {
 			err := rowsForChapterCount.Scan(&book.Chapters)
 			if err != nil {
-				log.Fatalf("COuld not get %s from db.\n", bookName)
+				log.Fatalf("Could not get %s from db.\n", bookName)
 			}
 
 			Mapping.Books = append(Mapping.Books, book)
