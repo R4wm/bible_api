@@ -22,8 +22,8 @@ import (
 // Structs //
 /////////////
 type Book struct {
-	Name  string
-	Books int
+	Name     string
+	Chapters int
 }
 
 type KJVMapping struct {
@@ -43,19 +43,6 @@ var Mapping KJVMapping
 ///////////////
 // Functions //
 ///////////////
-func init() {
-	// populate the Book struct
-	rows, _ := DB.Query("select distinct books from kjv")
-
-	for rows.Next() {
-		var bookName string
-		rows.Scan(&bookName)
-		book := Book{Name: bookName}
-		Mapping.Books = append(Mapping.Books, book)
-	}
-	// populates KJVMapping list
-}
-
 // helloWorld basic handler function
 func helloWorld(w http.ResponseWriter, r *http.Request) {
 	basicResponse := &response{Text: "Hello World " + r.URL.Path[:]}
@@ -147,6 +134,8 @@ func GetChapter(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	fmt.Printf("Mapping: %#v\n", Mapping)
+
 	/////////////////
 	// Args	       //
 	/////////////////
@@ -165,12 +154,48 @@ func main() {
 			kjvapi.CreateKJVDB(*dbPath)
 		}
 	}
+
+	fmt.Println("dbPath: ", *dbPath)
+	fmt.Println("createDB: ", *createDB)
 	////////////////////////////////
 	// Database Connection	      //
 	////////////////////////////////
 	DB, _ = sql.Open("sqlite3", *dbPath)
 	fmt.Println(fmt.Sprintf("%T\n", DB))
 	log.Printf("Running server using database at: %s\n", *dbPath)
+
+	/////////////////////////////
+	// Populate Mapping	   //
+	/////////////////////////////
+	// Cant do this part in an init() cause it will run before main and we havent spec'd the db from args
+	// TODO: Maybe make db location fixed..
+	// populate the Book struct
+	rows, _ := DB.Query("select distinct book from kjv")
+
+	for rows.Next() {
+		var bookName string
+		rows.Scan(&bookName)
+		book := Book{Name: bookName}
+
+		chaptersQuery := fmt.Sprintf("select max(chapter) from kjv where book=\"%s\"", bookName)
+		fmt.Println(chaptersQuery)
+		rowsForChapterCount, err := DB.Query(chaptersQuery)
+		if err != nil {
+			log.Fatalf("Failed query on %s\n", chaptersQuery)
+		}
+
+		for rowsForChapterCount.Next() {
+			err := rowsForChapterCount.Scan(&book.Chapters)
+			if err != nil {
+				log.Fatalf("COuld not get %s from db.\n", bookName)
+			}
+
+			Mapping.Books = append(Mapping.Books, book)
+		}
+
+	}
+	fmt.Printf("Mapping: %#v\n", Mapping)
+
 	/////////////////////
 	// Handlers	   //
 	/////////////////////
