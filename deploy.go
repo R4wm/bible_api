@@ -8,14 +8,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"net/http"
 
 	"github.com/r4wm/kjvapi"
 )
@@ -36,6 +36,14 @@ type KJVMapping struct {
 
 type response struct {
 	Text string `json:"text"`
+}
+
+// RandVerse struct for get_random_verse endpoint.
+type RandVerse struct {
+	Book    string `json:"Book"`
+	Chapter int    `json:"Chapter"`
+	Verse   int    `json:"Verse"`
+	Text    string `json:"Text"`
 }
 
 //////////
@@ -169,15 +177,11 @@ func GetVerse(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(verse)
 }
 
-func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
+func GetRandomVerseFromDB() (RandVerse, error) {
 	const lastCardinalVerseNum = 31101
-	var randVerse struct {
-		Book    string `json:"Book"`
-		Chapter int    `json:"Chapter"`
-		Verse   int    `json:"Verse"`
-		Text    string `json:"Text"`
-	}
-	log.Printf("%#v\n", r)
+
+	var randVerse RandVerse
+
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 := rand.New(s1)
 
@@ -186,20 +190,100 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := DB.Query(stmt)
 	if err != nil {
-		log.Fatal("stuffl")
+		log.Fatalf("Failed DB.Query(%s)\n", stmt)
+		return randVerse, err
 	}
 
 	for rows.Next() {
 		rows.Scan(&randVerse.Book, &randVerse.Chapter, &randVerse.Verse, &randVerse.Text)
 	}
 
-	result, err := json.Marshal(randVerse)
+	// OK
+	return randVerse, nil
+
+	// fmt.Printf("Type randVerse: %T\n", randVerse)
+
+	// result, err := json.Marshal(randVerse)
+	// if err != nil {
+	// 	log.Printf("Could not json marshal %#v\n", randVerse)
+	// 	return result, err
+	// }
+
+	// println("OK")
+
+	// return result, err
+}
+
+// GetRandomVerseAPI returns json formatted true random verse.
+func GetRandomVerseAPI(w http.ResponseWriter, r *http.Request) {
+
+	// get the verse struct
+	result, err := GetRandomVerseFromDB()
 	if err != nil {
-		log.Printf("Could not json marshal %#v\n", randVerse)
+
+		w.Header().Set("Content-Type", "application/text")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to get random verse from db."))
+		return
 	}
 
+	// marshal to json
+	randomVerse, err := json.Marshal(result)
+	if err != nil {
+
+		w.Header().Set("Content-Type", "application/text")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to Marshal data to json."))
+		return
+	}
+
+	// OK serve it
+	log.Printf("Endpoint: %s IP: %s -> %s\n", r.URL, r.RemoteAddr, randomVerse)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(result))
+	w.Write([]byte(randomVerse))
+}
+
+// GetRandomVerse write pretty html page with random verse.
+func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
+	result, err := GetRandomVerseFromDB()
+	if err != nil {
+
+		w.Header().Set("Content-Type", "application/text")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to get random verse from db."))
+		return
+	}
+
+	log.Printf("Endpoint: %s IP: %s -> %s\n", r.URL, r.RemoteAddr, result)
+
+	// TODO Move this to file and cache read 1 time and reuse..
+	tmpl, err := template.New("Basic").Parse(
+		`<!DOCTYPE html>
+<html>
+<body style="background-color:powderblue;">
+
+<h1><center>{{ .Book }} {{ .Chapter }}:{{ .Verse }} </center></h1>
+<h3><center>{{ .Text }}</center></h3>
+
+</body>
+</html>`)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/text")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to parse template"))
+		log.Println(err)
+		return
+	}
+
+	// Ok Serve it.
+	err = tmpl.Execute(w, result)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/text")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to write to Writer"))
+		log.Println(err)
+		return
+	}
 }
 
 func main() {
@@ -268,12 +352,14 @@ func main() {
 	}
 	fmt.Printf("Mapping: %#v\n", Mapping)
 
-	/////////////////////
-	// Handlers	   //
-	/////////////////////
+	////////////////////////////////////////////////////////////////////
+	// HANDLERS							  //
+	// NOTE: the "/api/*" are raw api json formatted endpoints	  //
+	////////////////////////////////////////////////////////////////////
 	http.HandleFunc("/get_books", GetBooks)
 	http.HandleFunc("/get_chapter", GetChapter)
 	http.HandleFunc("/get_verse", GetVerse)
 	http.HandleFunc("/get_random_verse", GetRandomVerse)
+	http.HandleFunc("/api/get_random_verse", GetRandomVerseAPI)
 	http.ListenAndServe(":8000", nil)
 }
