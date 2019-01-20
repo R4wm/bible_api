@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/r4wm/kjvapi"
+	"github.com/r4wm/mintz5"
 )
 
 /////////////
@@ -218,9 +219,8 @@ func GetRandomVerseFromDB() (RandVerse, error) {
 func GetRandomVerseAPI(w http.ResponseWriter, r *http.Request) {
 
 	// get the verse struct
-	result, err := GetRandomVerseFromDB()
+	rv, err := GetRandomVerseFromDB()
 	if err != nil {
-
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to get random verse from db."))
@@ -228,9 +228,8 @@ func GetRandomVerseAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// marshal to json
-	randomVerse, err := json.Marshal(result)
+	randomVerse, err := json.Marshal(rv)
 	if err != nil {
-
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to Marshal data to json."))
@@ -245,6 +244,7 @@ func GetRandomVerseAPI(w http.ResponseWriter, r *http.Request) {
 
 // GetRandomVerse write pretty html page with random verse.
 func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
+
 	result, err := GetRandomVerseFromDB()
 	if err != nil {
 
@@ -254,19 +254,29 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// create the data struct for template
+	returnPage := struct {
+		Verse RandVerse
+		Color string
+	}{
+		result,
+		mintz5.GetRandomColor(),
+	}
+
+	// logging
 	log.Printf("Endpoint: %s IP: %s -> %s\n", r.URL, r.RemoteAddr, result)
 
 	// TODO Move this to file and cache read 1 time and reuse..
 	tmpl, err := template.New("Basic").Parse(
-		`<!DOCTYPE html>
+		`
+<!DOCTYPE html>
 <html>
-<body style="background-color:powderblue;">
-
-<h1><center>{{ .Book }} {{ .Chapter }}:{{ .Verse }} </center></h1>
-<h3><center>{{ .Text }}</center></h3>
-
+<body style="background-color:{{ .Color }};">
+<h1><center>{{ .Verse.Book }} {{ .Verse.Chapter }}:{{ .Verse.Verse }} </center></h1>
+<h3><center>{{ .Verse.Text }}</center></h3>
 </body>
 </html>`)
+
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -276,7 +286,7 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ok Serve it.
-	err = tmpl.Execute(w, result)
+	err = tmpl.Execute(w, returnPage)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
