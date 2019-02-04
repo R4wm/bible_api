@@ -21,6 +21,30 @@ import (
 	"github.com/r4wm/mintz5"
 )
 
+const (
+	chapterTemplate = `
+<html>
+  <body style="background-color:{{ .Color }};">
+    <h1><center>{{ .BookName }} {{ .Chapter }}</h1>
+  <body>
+    {{ range .Verses }}
+
+    <p><b><center>{{ . }} </b></p>
+
+    {{ end }}
+  </body>
+</html>  `
+
+	verseTemplate = `
+<!DOCTYPE html>
+<html>
+<body style="background-color:{{ .Color }};">
+<h1><center>{{ .Verse.Book }} {{ .Verse.Chapter }}:{{ .Verse.Verse }} </center></h1>
+<h3><center>{{ .Verse.Text }}</center></h3>
+</body>
+</html>`
+)
+
 /////////////
 // Structs //
 /////////////
@@ -68,12 +92,20 @@ func GetBooks(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(jsonResponse))
 }
 
-// GetChapter print the book, chapter and verses in json format
-func GetChapter(w http.ResponseWriter, r *http.Request) {
+// GetChapterAPI print the book, chapter and verses in json format
+func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%#v\n", r)
 
-	var verses []kjvapi.KJVVerse
+	verses := struct {
+		BookName string
+		Chapter  int
+		Verses   []string
+		Color    string
+	}{Color: mintz5.GetRandomColor()}
 
+	// var verses []kjvapi.KJVVerse
+
+	// Check the Book arg from request.
 	book, ok := r.URL.Query()["book"]
 	if !ok || len(book[0]) < 1 {
 		log.Println("Url param book is missing.")
@@ -83,7 +115,9 @@ func GetChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	book[0] = strings.ToUpper(book[0])
+	verses.BookName = book[0]
 
+	// Check the chapter arg in request
 	chapter, ok := r.URL.Query()["chapter"]
 	if !ok {
 		log.Println("Url param chapter is missing.")
@@ -110,23 +144,25 @@ func GetChapter(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		rows.Scan(&verse, &text)
-		verses = append(verses, kjvapi.KJVVerse{Verse: verse, Text: text})
+		verses.Verses = append(verses.Verses, text)
 	}
+
 	i, err := strconv.Atoi(chapter[0])
+	verses.Chapter = i
 	if err != nil {
 		log.Printf("Could not convert %s to int.", chapter[0])
 	}
 
-	bkResult := kjvapi.KJVBook{
-		Book: book[0],
-		Chapters: []kjvapi.KJVChapter{
-			kjvapi.KJVChapter{Chapter: i, Verses: verses}}}
+	// Execute the template
+	t, err := template.New("chapter").Parse(chapterTemplate)
+	if err != nil {
+		panic(err)
+	}
 
-	response, _ := json.Marshal(bkResult)
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, string(response))
+	t.Execute(w, verses)
 }
 
+// GetVerse writes single verse to webpage template
 func GetVerse(w http.ResponseWriter, r *http.Request) {
 
 	var verse kjvapi.KJVVerse
@@ -178,6 +214,7 @@ func GetVerse(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(verse)
 }
 
+// GetRandomVerseFromDB gets the verse from db to pass to pretty print api.
 func GetRandomVerseFromDB() (RandVerse, error) {
 	const lastCardinalVerseNum = 31101
 
@@ -201,18 +238,6 @@ func GetRandomVerseFromDB() (RandVerse, error) {
 
 	// OK
 	return randVerse, nil
-
-	// fmt.Printf("Type randVerse: %T\n", randVerse)
-
-	// result, err := json.Marshal(randVerse)
-	// if err != nil {
-	// 	log.Printf("Could not json marshal %#v\n", randVerse)
-	// 	return result, err
-	// }
-
-	// println("OK")
-
-	// return result, err
 }
 
 // GetRandomVerseAPI returns json formatted true random verse.
@@ -267,15 +292,7 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Endpoint: %s IP: %s -> %s\n", r.URL, r.RemoteAddr, result)
 
 	// TODO Move this to file and cache read 1 time and reuse..
-	tmpl, err := template.New("Basic").Parse(
-		`
-<!DOCTYPE html>
-<html>
-<body style="background-color:{{ .Color }};">
-<h1><center>{{ .Verse.Book }} {{ .Verse.Chapter }}:{{ .Verse.Verse }} </center></h1>
-<h3><center>{{ .Verse.Text }}</center></h3>
-</body>
-</html>`)
+	tmpl, err := template.New("Basic").Parse(verseTemplate)
 
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
@@ -367,7 +384,7 @@ func main() {
 	// NOTE: the "/api/*" are raw api json formatted endpoints	  //
 	////////////////////////////////////////////////////////////////////
 	http.HandleFunc("/get_books", GetBooks)
-	http.HandleFunc("/get_chapter", GetChapter)
+	http.HandleFunc("/get_chapter", GetChapterAPI)
 	http.HandleFunc("/get_verse", GetVerse)
 	http.HandleFunc("/get_random_verse", GetRandomVerse)
 	http.HandleFunc("/api/get_random_verse", GetRandomVerseAPI)
