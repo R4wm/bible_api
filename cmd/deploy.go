@@ -27,10 +27,8 @@ const (
   <body style="background-color:{{ .Color }};">
     <h1><center>{{ .BookName }} {{ .Chapter }}</h1>
   <body>
-    {{ range .Verses }}
-
-    <p><b><center>{{ . }} </b></p>
-
+    {{ range $index, $results := .Verses }}
+    <p><b><center>{{ add $index 1}} {{ . }} </b></p>
     {{ end }}
   </body>
 </html>  `
@@ -153,8 +151,14 @@ func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Could not convert %s to int.", chapter[0])
 	}
 
-	// Execute the template
-	t, err := template.New("chapter").Parse(chapterTemplate)
+	//////////////////////////
+	// Template time        //
+	//////////////////////////
+	// add function to increment range indexing since it starts at 0 by default
+	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
+
+	t, err := template.New("chapter").Funcs(funcs).Parse(chapterTemplate)
+
 	if err != nil {
 		panic(err)
 	}
