@@ -17,6 +17,7 @@ var Colors = []string{
 	"IndianRed",
 	"LightSalmon",
 	"MediumSpringGreen",
+	"MediumSlateBlue",
 	"Olive",
 	"Orange",
 	"SpringGreen",
