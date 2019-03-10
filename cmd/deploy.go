@@ -55,12 +55,30 @@ const (
 <!DOCTYPE html>
 <html>
    <head>
-      <title>Chapters for {{ .Name }} </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+	 .block {
+	 display: block;
+	 width: 100%;
+	 border: none;
+	 background-color: #4CAF50;
+	 color: white;
+	 padding: 14px 28px;
+	 font-size: 16px;
+	 cursor: pointer;
+	 text-align: center;
+	 }
+	 .block:hover {
+	 background-color: #ddd;
+	 color: black;
+	 }
+      </style>
+      <title>{{ .Name }}</title>
    </head>
    <body style="background-color:{{ .Color }};">
-     <p><h1> {{ .Name }} </h1></p>
+     <p><center><h1> {{ .Name }} </h1><center></p>
      {{ range $index, $results := .Links }}
-       <p><button onclick="window.location.href={{ $results }};">{{ add $index 1 }}</button></p>
+       <p><button class="block" onclick="window.location.href={{ $results }};">{{ add $index 1 }}</button></p>
      {{ end }}
    </body>
 </html>`
@@ -68,14 +86,32 @@ const (
 	booksButtonsTemplate = `
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Books of the Bible</title>
-  </head>
-  <body style="background-color:{{ .Color }};">
-    {{ range $key, $value := .Books }}
-    <p><button onclick="window.location.href={{ createLink $value }};">{{ $value }}</button></p>
-    {{ end }}
-  </body>
+   <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+	 .block {
+	 display: block;
+	 width: 100%;
+	 border: none;
+	 background-color: #4CAF50;
+	 color: white;
+	 padding: 14px 28px;
+	 font-size: 16px;
+	 cursor: pointer;
+	 text-align: center;
+	 }
+	 .block:hover {
+	 background-color: #ddd;
+	 color: black;
+	 }
+      </style>
+      <title>Books of the Bible</title>
+   </head>
+   <body style="background-color:{{ .Color }};">
+      {{ range $key, $value := .Books }}
+      <p><button class="block" onclick="window.location.href={{ createLink $value }};">{{ $value }}</button></p>
+      {{ end }}
+   </body>
 </html>`
 )
 
@@ -187,7 +223,9 @@ func ListBooks(w http.ResponseWriter, r *http.Request) {
 		"JUDE",
 		"REVELATION"}
 
-	funcs := template.FuncMap{"createLink": func(b string) string { return fmt.Sprintf("%s/list_chapters?book=%s", hostname, b) }}
+	funcs := template.FuncMap{"createLink": func(b string) string {
+		return fmt.Sprintf("%s/list_chapters?book=%s", hostname, b)
+	}}
 
 	t, err := template.New("listBooks").Funcs(funcs).Parse(booksButtonsTemplate)
 	if err != nil {
