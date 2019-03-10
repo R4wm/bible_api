@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	"log"
 	"math/rand"
 	"net/http"
 	"os"
@@ -19,27 +18,65 @@ import (
 
 	"github.com/r4wm/kjvapi"
 	"github.com/r4wm/mintz5"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
+	hostname = "http://cdn.mintz5.com/801A6BD/linode"
+	// hostname = "http://mintz5.com:8000"
+	// hostname = `http://localhost:8000`
+
 	chapterTemplate = `
 <html>
   <body style="background-color:{{ .Color }};">
     <h1><center>{{ .BookName }} {{ .Chapter }}</h1>
   <body>
     {{ range $index, $results := .Verses }}
-    <p><b><center>{{ add $index 1}} {{ . }} </b></p>
+    <p><b><left>{{ add $index 1}} {{ . }} </b></p>
     {{ end }}
+      <p><button onclick="window.location.href=http://cdn.mintz5.com/801A6BD/linode/list_books;">BOOKS</button></p>
   </body>
 </html>  `
 
 	verseTemplate = `
 <!DOCTYPE html>
 <html>
-<body style="background-color:{{ .Color }};">
-<h1><center>{{ .Verse.Book }} {{ .Verse.Chapter }}:{{ .Verse.Verse }} </center></h1>
-<h3><center>{{ .Verse.Text }}</center></h3>
-</body>
+   <body style="background-color:{{ .Color }};">
+      <h1>
+	 <center>{{ .Verse.Book }} {{ .Verse.Chapter }}:{{ .Verse.Verse }} </center>
+      </h1>
+      <h3>
+	 <center>{{ .Verse.Text }}</center>
+      </h3>
+   </body>
+</html>
+`
+
+	chapterButtonsTemplate = `
+<!DOCTYPE html>
+<html>
+   <head>
+      <title>Chapters for {{ .Name }} </title>
+   </head>
+   <body style="background-color:{{ .Color }};">
+     <p><h1> {{ .Name }} </h1></p>
+     {{ range $index, $results := .Links }}
+       <p><button onclick="window.location.href={{ $results }};">{{ add $index 1 }}</button></p>
+     {{ end }}
+   </body>
+</html>`
+
+	booksButtonsTemplate = `
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Books of the Bible</title>
+  </head>
+  <body style="background-color:{{ .Color }};">
+    {{ range $key, $value := .Books }}
+    <p><button onclick="window.location.href={{ createLink $value }};">{{ $value }}</button></p>
+    {{ end }}
+  </body>
 </html>`
 )
 
@@ -78,6 +115,140 @@ var Mapping KJVMapping
 ///////////////
 // Functions //
 ///////////////
+
+func ListBooks(w http.ResponseWriter, r *http.Request) {
+
+	log.Info("ListBooks")
+
+	books := []string{
+		"GENESIS",
+		"EXODUS",
+		"LEVITICUS",
+		"NUMBERS",
+		"DEUTERONOMY",
+		"JOSHUA",
+		"JUDGES",
+		"RUTH",
+		"1SAMUEL",
+		"2SAMUEL",
+		"1KINGS",
+		"2KINGS",
+		"1CHRONICLES",
+		"2CHRONICLES",
+		"EZRA",
+		"NEHEMIAH",
+		"ESTHER",
+		"JOB",
+		"PSALMS",
+		"PROVERBS",
+		"ECCLESIASTES",
+		"SONG OF SOLOMON",
+		"ISAIAH",
+		"JEREMIAH",
+		"LAMENTATIONS",
+		"EZEKIEL",
+		"DANIEL",
+		"HOSEA",
+		"JOEL",
+		"AMOS",
+		"OBADIAH",
+		"JONAH",
+		"MICAH",
+		"NAHUM",
+		"HABAKKUK",
+		"ZEPHANIAH",
+		"HAGGAI",
+		"ZECHARIAH",
+		"MALACHI",
+		"MATTHEW",
+		"MARK",
+		"LUKE",
+		"JOHN",
+		"ACTS",
+		"ROMANS",
+		"1CORINTHIANS",
+		"2CORINTHIANS",
+		"GALATIANS",
+		"EPHESIANS",
+		"PHILIPPIANS",
+		"COLOSSIANS",
+		"1THESSALONIANS",
+		"2THESSALONIANS",
+		"1TIMOTHY",
+		"2TIMOTHY",
+		"TITUS",
+		"PHILEMON",
+		"HEBREWS",
+		"JAMES",
+		"1PETER",
+		"2PETER",
+		"1JOHN",
+		"2JOHN",
+		"3JOHN",
+		"JUDE",
+		"REVELATION"}
+
+	funcs := template.FuncMap{"createLink": func(b string) string { return fmt.Sprintf("%s/list_chapters?book=%s", hostname, b) }}
+
+	t, err := template.New("listBooks").Funcs(funcs).Parse(booksButtonsTemplate)
+	if err != nil {
+		log.Warnf("Could not list books: %s\n", err)
+	}
+
+	booksStruct := struct {
+		Books []string
+		Color string
+	}{
+		Books: books,
+		Color: mintz5.GetRandomColor(),
+	}
+
+	t.Execute(w, booksStruct)
+}
+
+// ListBooks list the books of the Bible in button links
+func ListChapters(w http.ResponseWriter, r *http.Request) {
+	log.Info("ListChapters")
+	book, ok := r.URL.Query()["book"]
+
+	// Handle missing book args
+	if !ok || len(book) < 1 {
+		log.Warnf("Url param book is missing: %v\n", book)
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte("406 - book param not found."))
+		return
+	}
+
+	chaptersMax := mintz5.BookChapterLimit[strings.ToUpper(book[0])]
+	log.Println(chaptersMax)
+
+	chapterInfo := struct {
+		Name     string
+		Chapters []int
+		Links    []string
+		Color    string
+	}{
+		Name:  strings.ToUpper(book[0]),
+		Color: mintz5.GetRandomColor(),
+	}
+
+	// populate the data by interation
+	for i := 1; i <= chaptersMax; i++ {
+		chapterInfo.Chapters = append(chapterInfo.Chapters, i)
+		chapterInfo.Links = append(
+			chapterInfo.Links,
+			fmt.Sprintf("%s/get_chapter?book=%s&chapter=%s", hostname, chapterInfo.Name, strconv.Itoa(i)))
+	}
+
+	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
+	t, err := template.New("chapterListing").Funcs(funcs).Parse(chapterButtonsTemplate)
+	if err != nil {
+		log.Errorf("ListBooks failed : %v\n", err)
+	}
+
+	t.Execute(w, chapterInfo)
+}
+
 // GetBooks retrieve list of books from the kjv db
 func GetBooks(w http.ResponseWriter, r *http.Request) {
 	jsonResponse, err := json.Marshal(Mapping)
@@ -92,7 +263,7 @@ func GetBooks(w http.ResponseWriter, r *http.Request) {
 
 // GetChapterAPI print the book, chapter and verses in json format
 func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%#v\n", r)
+	log.Infof("%#v\n", r)
 
 	verses := struct {
 		BookName string
@@ -318,8 +489,6 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	fmt.Printf("Mapping: %#v\n", Mapping)
-
 	/////////////////
 	// Args	       //
 	/////////////////
@@ -392,5 +561,7 @@ func main() {
 	http.HandleFunc("/get_verse", GetVerse)
 	http.HandleFunc("/get_random_verse", GetRandomVerse)
 	http.HandleFunc("/api/get_random_verse", GetRandomVerseAPI)
+	http.HandleFunc("/list_chapters", ListChapters)
+	http.HandleFunc("/list_books", ListBooks)
 	http.ListenAndServe(":8000", nil)
 }
