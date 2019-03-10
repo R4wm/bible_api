@@ -34,7 +34,6 @@ const (
     {{ range $index, $results := .Verses }}
     <p><b><left>{{ add $index 1}} {{ . }} </b></p>
     {{ end }}
-      <p><button onclick="window.location.href=http://cdn.mintz5.com/801A6BD/linode/list_books;">BOOKS</button></p>
   </body>
 </html>  `
 
