@@ -1,5 +1,10 @@
 package main
 
+// TODO:
+// replace manual http.Response stuff with http.Error
+// find some way to alias long things like r.URL.Query()[intable][0]
+// uniform the endpoints, json, webpage etc.. its all mixed up.
+
 /////////////
 // Imports //
 /////////////
@@ -32,10 +37,11 @@ const (
     <h1><center>{{ .BookName }} {{ .Chapter }}</h1>
   <body>
     {{ range $index, $results := .Verses }}
-    <p><b><left>{{ add $index 1}} {{ . }} </b></p>
+    <p><b><left><a href={{ verseLink $index }}> {{ add $index 1}}</a> {{ . }} </b></p>
     {{ end }}
   </body>
-</html>  `
+</html> 
+`
 
 	verseTemplate = `
 <!DOCTYPE html>
@@ -81,7 +87,8 @@ const (
        <p><button class="block" onclick="window.location.href={{ $results }};">{{ add $index 1 }}</button></p>
      {{ end }}
    </body>
-</html>`
+</html>
+`
 
 	booksButtonsTemplate = `
 <!DOCTYPE html>
@@ -112,7 +119,8 @@ const (
       <p><button class="block" onclick="window.location.href={{ createLink $value }};">{{ $value }}</button></p>
       {{ end }}
    </body>
-</html>`
+</html>
+`
 )
 
 /////////////
@@ -151,6 +159,7 @@ var Mapping KJVMapping
 // Functions //
 ///////////////
 
+// ListBooks uses booksButtonstemplate to layout the books in html.
 func ListBooks(w http.ResponseWriter, r *http.Request) {
 
 	log.Info("ListBooks")
@@ -223,6 +232,7 @@ func ListBooks(w http.ResponseWriter, r *http.Request) {
 		"JUDE",
 		"REVELATION"}
 
+	// funcs generates the link needed for button
 	funcs := template.FuncMap{"createLink": func(b string) string {
 		return fmt.Sprintf("%s/list_chapters?book=%s", hostname, b)
 	}}
@@ -243,9 +253,11 @@ func ListBooks(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, booksStruct)
 }
 
-// ListBooks list the books of the Bible in button links
+// ListChapters list the chapters of the book with clickable buttons for navigation
 func ListChapters(w http.ResponseWriter, r *http.Request) {
-	log.Info("ListChapters")
+	log.Infof("ListChapters %s\n", r.RequestURI)
+	log.Infof("ListChapters: %s\n", r)
+
 	book, ok := r.URL.Query()["book"]
 
 	// Handle missing book args
@@ -257,7 +269,10 @@ func ListChapters(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chaptersMax := mintz5.BookChapterLimit[strings.ToUpper(book[0])]
-	log.Println(chaptersMax)
+	// TODO How should this be handled??
+	if chaptersMax == 0 {
+		log.Warnf("Book has no chapters. possible a typo if manually entered: %s\n")
+	}
 
 	chapterInfo := struct {
 		Name     string
@@ -283,6 +298,7 @@ func ListChapters(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("ListBooks failed : %v\n", err)
 	}
 
+	w.Header().Set("Content-Type", "text/html")
 	t.Execute(w, chapterInfo)
 }
 
@@ -364,8 +380,19 @@ func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 	//////////////////////////
 	// add function to increment range indexing since it starts at 0 by default
 	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
+	verseLink := template.FuncMap{"verseLink": func(x int) string {
 
-	t, err := template.New("chapter").Funcs(funcs).Parse(chapterTemplate)
+		verseOffSet := strconv.Itoa(x + 1)
+
+		return fmt.Sprintf("%s/get_verse?book=%s&chapter=%s&verse=%s&json=false",
+			hostname,
+			book[0],
+			chapter[0],
+			verseOffSet,
+		)
+	}}
+
+	t, err := template.New("chapter").Funcs(funcs).Funcs(verseLink).Parse(chapterTemplate)
 
 	if err != nil {
 		panic(err)
@@ -374,56 +401,146 @@ func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, verses)
 }
 
-// GetVerse writes single verse to webpage template
+// GetVerse writes single verse to json response
 func GetVerse(w http.ResponseWriter, r *http.Request) {
 
 	var verse kjvapi.KJVVerse
+	neededItems := []string{"book", "chapter", "verse", "json"}
 
-	neededItems := []string{"book", "chapter", "verse"}
+	// check number of Args used
+	if len(r.URL.Query()) != 4 {
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte("Required args: book, chapter, verse"))
+		return
+	}
+
+	// check expected args exist
 	for _, item := range neededItems {
 		_, ok := r.URL.Query()[item]
+
 		if !ok {
-			w.WriteHeader(http.StatusNotAcceptable)
-			msg := fmt.Sprintf("%s arg required.\n", item)
-			w.Write([]byte(msg))
+			log.Warnf("Missing arg: %s\n", item)
+			http.Error(w, fmt.Sprintf("%s arg required.\n", item), http.StatusBadRequest)
 			return
 		}
+	}
 
-		//Args check out ok.
-		stmt := fmt.Sprintf("select text from kjv where book=%s and chapter=%s and verse=%s",
+	// check verse and chapter is "int"
+	for _, intable := range []string{"chapter", "verse"} {
+		if _, err := strconv.Atoi(r.URL.Query()[intable][0]); err != nil {
+			msg := fmt.Sprintf("%s:%s is not an integer value\n", intable, r.URL.Query()[intable][0])
+			log.Warnf(msg)
+			http.Error(w, msg, http.StatusBadRequest)
+			return
+		}
+	}
+
+	//Args check out ok.
+	log.Infof("book: %s\n", r.URL.Query()["book"][0])
+	log.Infof("chapter: %s\n", r.URL.Query()["chapter"][0])
+	log.Infof("verse: %s\n", r.URL.Query()["verse"][0])
+	stmt := fmt.Sprintf("select text from kjv where book=\"%s\" and chapter=%s and verse=%s",
+		strings.ToUpper(r.URL.Query()["book"][0]),
+		r.URL.Query()["chapter"][0],
+		r.URL.Query()["verse"][0])
+
+	rows, err := DB.Query(stmt)
+
+	// Handle no DB connect.
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Could not query DB"), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	// Query from DB
+	for rows.Next() {
+		rows.Scan(&verse.Text)
+	}
+
+	// Check results from DB
+	if len(verse.Text) <= 0 {
+		log.Warnf("Got nothing from database: %s\n", stmt)
+
+	} else {
+		verse.Verse, err = strconv.Atoi(r.URL.Query()["verse"][0])
+		if err != nil {
+			log.Printf("Could NOT convert %v to int\n",
+				r.URL.Query()["verse"][0])
+		}
+	}
+
+	////////////////////////////
+	// JSON OR WEBPAGE	  //
+	////////////////////////////
+
+	// Return json the result
+	switch pretty := r.URL.Query()["json"][0]; pretty {
+	case "true":
+		result, _ := json.Marshal(verse)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(result))
+		log.Info(verse)
+		return
+
+	// Return pretty web page
+	case "false":
+		var verse RandVerse
+
+		// Prep DB for query
+		stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where book=\"%s\" and chapter=%s and verse=%s",
 			strings.ToUpper(r.URL.Query()["book"][0]),
 			r.URL.Query()["chapter"][0],
 			r.URL.Query()["verse"][0])
 
 		rows, err := DB.Query(stmt)
+
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Header().Set("Content-Type", "application/text")
-			w.Write([]byte("Could not query database."))
+			log.Warnf("Failed DB.Query(%s)\n", stmt)
+			http.Error(w, "Failed to Query DB", http.StatusInternalServerError)
 			return
 		}
-		defer rows.Close()
 
 		for rows.Next() {
-			rows.Scan(&verse.Text)
+			rows.Scan(&verse.Book, &verse.Chapter, &verse.Verse, &verse.Text)
 		}
 
-		if len(verse.Text) <= 0 {
-			log.Printf("Got nothing from database: %s\n", stmt)
-		} else {
-			verse.Verse, err = strconv.Atoi(r.URL.Query()["verse"][0])
-			if err != nil {
-				log.Printf("Could NOT convert %v to int\n",
-					r.URL.Query()["verse"][0])
-			}
+		// Make pretty web page from template
+		tmpl, err := template.New("Basic").Parse(verseTemplate)
+
+		// Handle template errors.
+		if err != nil {
+			w.Header().Set("Content-Type", "application/text")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to parse template"))
+			log.Println(err)
+			return
 		}
+
+		// create the data struct for template
+		returnPage := struct {
+			Verse RandVerse
+			Color string
+		}{
+			verse,
+			mintz5.GetRandomColor(),
+		}
+
+		// Ok Serve it pretty
+		err = tmpl.Execute(w, returnPage)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/text")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to write to Writer"))
+			log.Println(err)
+			return
+		}
+
+	// Handle bad json arg
+	default:
+		http.Error(w, fmt.Sprintf("json arg value not understood: %v\n", pretty), http.StatusInternalServerError)
+		return
 	}
-
-	// Return the result
-	result, _ := json.Marshal(verse)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(result))
-	fmt.Println(verse)
 }
 
 // GetRandomVerseFromDB gets the verse from db to pass to pretty print api.
@@ -477,6 +594,11 @@ func GetRandomVerseAPI(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Endpoint: %s IP: %s -> %s\n", r.URL, r.RemoteAddr, randomVerse)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(randomVerse))
+}
+
+// GetVerseWebPage create nice web page from template
+func GetVerseWebPage(w http.ResponseWriter, r *http.Request) {
+
 }
 
 // GetRandomVerse write pretty html page with random verse.
