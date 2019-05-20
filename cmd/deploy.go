@@ -27,18 +27,52 @@ import (
 )
 
 const (
-	hostname = "http://cdn.mintz5.com/801A6BD/linode"
-	// hostname = "http://mintz5.com:8000"
-	// hostname = `http://localhost:8000`
+	// hostname = "http://cdn.mintz5.com/801A6BD/linode"
+	hostname = `http://localhost:8000`
 
 	chapterTemplate = `
 <html>
+<style>
+.btn-group button {
+  background-color: gold; /* Green background */
+  border: 1px solid green; /* Green border */
+  color: black; 
+  padding: 10px 24px; /* Some padding */
+  cursor: pointer; /* Pointer/hand icon */
+  float: center; /* Float the buttons side by side */
+}
+
+/* Clear floats (clearfix hack) */
+.btn-group:after {
+  content: "";
+  clear: both;
+  display: table;
+}
+
+.btn-group button:not(:last-child) {
+  border-right: none; /* Prevent double borders */
+}
+
+/* Add a background color on hover */
+.btn-group button:hover {
+  background-color: #3e8e41;
+}
+</style>
   <body style="background-color:{{ .Color }};">
     <h1><center>{{ .BookName }} {{ .Chapter }}</h1>
   <body>
     {{ range $index, $results := .Verses }}
     <p><b><left><a href={{ verseLink $index }}> {{ add $index 1}}</a> {{ . }} </b></p>
     {{ end }}
+    <div class="btn-group">
+    {{ if .PreviousChapterLink  }}
+    <p><button class="block" onclick="window.location.href={{.PreviousChapterLink}};">Previous Chapter</button></p>
+    {{ end }}
+    <p><button class="block" onclick="window.location.href={{.ListAllBooksLink}};">Books</button></p>
+    {{ if .NextChapterLink  }}
+    <p><button class="block" onclick="window.location.href={{.NextChapterLink}};">Next Chapter</button></p>
+    {{ end }}
+    </div>
   </body>
 </html> 
 `
@@ -161,8 +195,6 @@ var Mapping KJVMapping
 
 // ListBooks uses booksButtonstemplate to layout the books in html.
 func ListBooks(w http.ResponseWriter, r *http.Request) {
-
-	log.Info("ListBooks")
 
 	books := []string{
 		"GENESIS",
@@ -304,6 +336,7 @@ func ListChapters(w http.ResponseWriter, r *http.Request) {
 
 // GetBooks retrieve list of books from the kjv db
 func GetBooks(w http.ResponseWriter, r *http.Request) {
+
 	jsonResponse, err := json.Marshal(Mapping)
 
 	if err != nil {
@@ -316,16 +349,19 @@ func GetBooks(w http.ResponseWriter, r *http.Request) {
 
 // GetChapterAPI print the book, chapter and verses in json format
 func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
-	log.Infof("%#v\n", r)
 
 	verses := struct {
-		BookName string
-		Chapter  int
-		Verses   []string
-		Color    string
-	}{Color: mintz5.GetRandomColor()}
-
-	// var verses []kjvapi.KJVVerse
+		BookName            string
+		Chapter             int
+		Verses              []string
+		Color               string
+		NextChapterLink     string
+		PreviousChapterLink string
+		ListAllBooksLink    string
+	}{
+		Color:            mintz5.GetRandomColor(),
+		ListAllBooksLink: fmt.Sprintf("%s/list_books", hostname),
+	}
 
 	// Check the Book arg from request.
 	book, ok := r.URL.Query()["book"]
@@ -375,6 +411,17 @@ func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Could not convert %s to int.", chapter[0])
 	}
 
+	// Add footer next chapter and previous chapter
+	if verses.Chapter <= 1 {
+		verses.PreviousChapterLink = ""
+	} else {
+		verses.PreviousChapterLink = fmt.Sprintf("%s/get_chapter?book=%s&chapter=%s", hostname, verses.BookName, strconv.Itoa(i-1))
+	}
+
+	if i < mintz5.BookChapterLimit[book[0]] {
+		verses.NextChapterLink = fmt.Sprintf("%s/get_chapter?book=%s&chapter=%s", hostname, verses.BookName, strconv.Itoa(i+1))
+	}
+
 	//////////////////////////
 	// Template time        //
 	//////////////////////////
@@ -397,7 +444,7 @@ func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-
+	log.Infof("%s chapter %d", verses.BookName, verses.Chapter)
 	t.Execute(w, verses)
 }
 
