@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	// hostname = "http://cdn.mintz5.com/801A6BD/linode"
-	hostname = `http://localhost:8000`
+	hostname = "https://cdn.mintz5.com/801A6BD/linode"
+	//hostname = `http://localhost:8000`
 
 	chapterTemplate = `
 <html>
