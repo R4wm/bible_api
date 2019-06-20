@@ -28,7 +28,7 @@ import (
 
 const (
 	hostname = "https://cdn.mintz5.com/801A6BD/linode"
-	//hostname = `http://localhost:8000`
+	// hostname = "http://localhost:8000"
 
 	chapterTemplate = `
 <html>
@@ -86,6 +86,7 @@ const (
       </h1>
       <h3>
 	 <center>{{ .Verse.Text }}</center>
+         <center><p><button class="block" onclick="window.location.href={{.ChapterRef}};">{{ .Verse.Book }} {{ .Verse.Chapter }}</button></p></center>
       </h3>
    </body>
 </html>
@@ -662,11 +663,13 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 
 	// create the data struct for template
 	returnPage := struct {
-		Verse RandVerse
-		Color string
+		Verse      RandVerse
+		Color      string
+		ChapterRef string
 	}{
 		result,
 		mintz5.GetRandomColor(),
+		"",
 	}
 
 	// logging
@@ -684,6 +687,12 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ok Serve it.
+	returnPage.ChapterRef = fmt.Sprintf("%s/get_chapter?book=%s&chapter=%d",
+		hostname,
+		result.Book,
+		result.Chapter,
+	)
+
 	err = tmpl.Execute(w, returnPage)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
