@@ -27,9 +27,6 @@ import (
 )
 
 const (
-	hostname = "https://cdn.mintz5.com/801A6BD/linode"
-	// hostname = "http://localhost:8000"
-
 	chapterTemplate = `
 <html>
 <style>
@@ -267,7 +264,7 @@ func ListBooks(w http.ResponseWriter, r *http.Request) {
 
 	// funcs generates the link needed for button
 	funcs := template.FuncMap{"createLink": func(b string) string {
-		return fmt.Sprintf("%s/list_chapters?book=%s", hostname, b)
+		return fmt.Sprintf("list_chapters?book=%s", b)
 	}}
 
 	t, err := template.New("listBooks").Funcs(funcs).Parse(booksButtonsTemplate)
@@ -322,7 +319,7 @@ func ListChapters(w http.ResponseWriter, r *http.Request) {
 		chapterInfo.Chapters = append(chapterInfo.Chapters, i)
 		chapterInfo.Links = append(
 			chapterInfo.Links,
-			fmt.Sprintf("%s/get_chapter?book=%s&chapter=%s", hostname, chapterInfo.Name, strconv.Itoa(i)))
+			fmt.Sprintf("get_chapter?book=%s&chapter=%s", chapterInfo.Name, strconv.Itoa(i)))
 	}
 
 	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
@@ -361,7 +358,7 @@ func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 		ListAllBooksLink    string
 	}{
 		Color:            mintz5.GetRandomColor(),
-		ListAllBooksLink: fmt.Sprintf("%s/list_books", hostname),
+		ListAllBooksLink: fmt.Sprintf("list_books"),
 	}
 
 	// Check the Book arg from request.
@@ -416,11 +413,11 @@ func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 	if verses.Chapter <= 1 {
 		verses.PreviousChapterLink = ""
 	} else {
-		verses.PreviousChapterLink = fmt.Sprintf("%s/get_chapter?book=%s&chapter=%s", hostname, verses.BookName, strconv.Itoa(i-1))
+		verses.PreviousChapterLink = fmt.Sprintf("get_chapter?book=%s&chapter=%s", verses.BookName, strconv.Itoa(i-1))
 	}
 
 	if i < mintz5.BookChapterLimit[book[0]] {
-		verses.NextChapterLink = fmt.Sprintf("%s/get_chapter?book=%s&chapter=%s", hostname, verses.BookName, strconv.Itoa(i+1))
+		verses.NextChapterLink = fmt.Sprintf("get_chapter?book=%s&chapter=%s", verses.BookName, strconv.Itoa(i+1))
 	}
 
 	//////////////////////////
@@ -432,8 +429,7 @@ func GetChapterAPI(w http.ResponseWriter, r *http.Request) {
 
 		verseOffSet := strconv.Itoa(x + 1)
 
-		return fmt.Sprintf("%s/get_verse?book=%s&chapter=%s&verse=%s&json=false",
-			hostname,
+		return fmt.Sprintf("get_verse?book=%s&chapter=%s&verse=%s&json=false",
 			book[0],
 			chapter[0],
 			verseOffSet,
@@ -687,8 +683,7 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ok Serve it.
-	returnPage.ChapterRef = fmt.Sprintf("%s/get_chapter?book=%s&chapter=%d",
-		hostname,
+	returnPage.ChapterRef = fmt.Sprintf("get_chapter?book=%s&chapter=%d",
 		result.Book,
 		result.Chapter,
 	)
