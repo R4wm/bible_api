@@ -688,6 +688,24 @@ func GetRandomVerse(w http.ResponseWriter, r *http.Request) {
 		result.Chapter,
 	)
 
+	if r.URL.Query()["json"] != nil {
+		if r.URL.Query()["json"][0] == "true" {
+			// do the json stuff here
+			jsonResult, err := json.Marshal(result)
+			if err != nil {
+				w.Header().Set("Content-Type", "application/text")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Failed to marshal json from result"))
+				log.Println(err)
+				return
+			}
+
+			w.Write(jsonResult)
+			return
+		}
+
+	}
+	// not doing json, so do normal html template
 	err = tmpl.Execute(w, returnPage)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
