@@ -71,11 +71,11 @@ const (
     <div class="w3-bar">
     <div class="btn-group">
     {{ if .PreviousChapterLink  }}
-    <button onclick="window.location.href = '{{.PreviousChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Previous Chapter</button>
+    <button onclick="window.location.href = '{{.PreviousChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> < </button>
     {{ end }}
     <button onclick="window.location.href = '{{.ListAllBooksLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Books</button>
     {{ if .NextChapterLink  }}
-    <button onclick="window.location.href = '{{.NextChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Next Chapter</button>
+    <button onclick="window.location.href = '{{.NextChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> > </button>
     {{ end }}
     </div>
   </body>
