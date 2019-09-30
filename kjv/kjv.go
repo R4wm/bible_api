@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -481,6 +482,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	var matches struct {
 		Verses []Verse
+		Count  map[string]int
 	}
 
 	// Handle text query
@@ -516,7 +518,10 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 
-	fmt.Printf("%v\n", rows)
+	regexCount := 0
+	overallCount := make(map[string]int)
+	re := regexp.MustCompile("(?i)" + searchText[0])
+
 	for rows.Next() {
 		match := Verse{}
 		err := rows.Scan(&match.Book, &match.Chapter, &match.Verse, &match.Text)
@@ -528,9 +533,19 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(msg))
 			return
 		}
+
+		//////////////////////////////
+		// Count regex finds	    //
+		//////////////////////////////
+		foundCount := re.FindAll([]byte(match.Text), -1)
+		regexCount = regexCount + len(foundCount)
+
+		overallCount[match.Book] += 1
+		overallCount["overall"] += 1
 		matches.Verses = append(matches.Verses, match)
 	}
 
+	matches.Count = overallCount
 	// Handle json request
 	if wantsJson(r) {
 		jsonizeResponse(matches, w, r)

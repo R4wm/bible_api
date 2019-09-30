@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"net/http"
 	"os"
 
@@ -12,23 +13,34 @@ import (
 )
 
 func main() {
-	// Database
-	dbPath := "/tmp/kjv.db"
 
-	// Create db if does not exist
-	path, err := os.Stat(dbPath)
-	if os.IsNotExist(err) {
-		_, err := sqlite3_kjv.CreateKJVDB(dbPath)
+	dbPathp := flag.String("dbPath", "/tmp/kjv.db", "Path to kjv database.")
+	createDB := flag.Bool("createDB", false, "Create the kjv database.")
+	flag.Parse()
 
-		if err != nil {
-			panic(err)
+	// Create the DB if asked
+	if *createDB == true {
+		path, err := os.Stat(*dbPathp)
+		if os.IsNotExist(err) {
+			_, err := sqlite3_kjv.CreateKJVDB(*dbPathp)
+
+			if err != nil {
+				panic(err)
+			}
+
+			log.Infof("Created database %v", path)
 		}
+	}
 
-		log.Infof("Created database %v", path)
+	// Check the db path exists
+	_, err := os.Stat(*dbPathp)
+	if os.IsNotExist(err) {
+		log.Errorf("database path does not exist: %s", *dbPathp)
+		os.Exit(1)
 	}
 
 	// Create database connection
-	db, err := db.CreateDatabase(dbPath)
+	db, err := db.CreateDatabase(*dbPathp)
 	if err != nil {
 		panic(err)
 	}
@@ -42,9 +54,11 @@ func main() {
 		Router:   router,
 		Database: db,
 	}
+
 	app.SetupRouter()
-	log.Infof("Setup router OK.")
+	port := ":8000"
+	log.Infof("Listening on %s\n", port)
 
 	// Serve
-	log.Fatal(http.ListenAndServe(":8000", router))
+	log.Fatal(http.ListenAndServe(port, router))
 }
