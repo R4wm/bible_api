@@ -593,19 +593,10 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 }
 
 func jsonizeResponse(obj interface{}, w http.ResponseWriter, r *http.Request) {
-
-	jsonResult, err := json.MarshalIndent(obj, "  ", "")
-	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to marshal json from result"))
-		log.Println(err)
-		return
-	}
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "    ")
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(jsonResult)
-	return
-
+	encoder.Encode(&obj)
 }
 
 // getRandomVerse write pretty html page with random verse.
