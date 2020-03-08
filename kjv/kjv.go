@@ -485,6 +485,8 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		Count  map[string]int
 	}
 
+	var defaultSearchLimit = "10000"
+
 	// Handle text query
 	searchText, ok := r.URL.Query()["q"]
 	fmt.Printf("%v\n", searchText)
@@ -497,7 +499,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	searchLimit, ok := r.URL.Query()["n"]
 	fmt.Printf("searchLImit initial: %v\n", searchLimit)
 	if !ok || len(searchLimit) < 1 {
-		searchLimit = append(searchLimit, "10")
+		searchLimit = append(searchLimit, defaultSearchLimit)
 	}
 
 	limit, err := strconv.Atoi(searchLimit[0])
