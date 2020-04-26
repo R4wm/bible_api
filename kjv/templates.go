@@ -96,50 +96,63 @@ const (
 
 	versesTemplate = `
 <html>
-<style>
-.btn-group button {
-  background-color: gold; /* Green background */
-  border: 1px solid green; /* Green border */
-  color: black;
-  padding: 10px 24px; /* Some padding */
-  cursor: pointer; /* Pointer/hand icon */
-  float: center; /* Float the buttons side by side */
-}
-/* Clear floats (clearfix hack) */
-.btn-group:after {
-  content: "";
-  clear: both;
-  display: table;
-}
-.btn-group button:not(:last-child) {
-  border-right: none; /* Prevent double borders */
-}
-/* Add a background color on hover */
-.btn-group button:hover {
-  background-color: #3e8e41;
-}
-</style>
+  <style>
+    .btn-group button {
+    background-color: gold; /* Green background */
+    border: 1px solid green; /* Green border */
+    color: black;
+    padding: 10px 24px; /* Some padding */
+    cursor: pointer; /* Pointer/hand icon */
+    float: center; /* Float the buttons side by side */
+    }
+    /* Clear floats (clearfix hack) */
+    .btn-group:after {
+    content: "";
+    clear: both;
+    display: table;
+    }
+    .btn-group button:not(:last-child) {
+    border-right: none; /* Prevent double borders */
+    }
+    /* Add a background color on hover */
+    .btn-group button:hover {
+    background-color: #3e8e41;
+    }
+  </style>
   <body style="background-color:{{ .Color }};">
-    <h1><center>{{ .BookName }} {{ .Chapter }}</h1>
-  <body>
-    {{ range $index, $results := .Verses }}
-    <p><b><left><a href={{ verseLink $index }}> {{ add $index 1}}</a> {{ . }} </b></p>
-    {{ end }}
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-    <div class="w3-bar">
-    <div class="btn-group">
-    {{ if .PreviousChapterLink  }}
-    <button onclick="window.location.href = '{{.PreviousChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> < </button>
-    {{ end }}
-    <button onclick="window.location.href = '{{.ListAllBooksLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Books</button>
-    {{ if .NextChapterLink  }}
-    <button onclick="window.location.href = '{{.NextChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> > </button>
-    {{ end }}
-    </div>
-  </body>
+    {{if .StartVerse}}<h1><center>{{ .BookName }} {{ .Chapter }}:{{.StartVerse}}-{{.EndVerse}}</h1>
+    {{else}}
+    <h1><center>{{ .BookName }} {{ .Chapter }}:{{.SingleVerse}}
+    {{end}}
+	<body>
+	  {{ range $index, $results := .Verses }}
+          {{ range $verseNum, $verseText := $results}}
+	  <p><b><left><a href={{$verseNum}}?json=false> {{$verseNum}}</a> {{$verseText }} </b></p>
+	  {{end}}
+          {{end}}
+	  <meta name="viewport" content="width=device-width, initial-scale=1">
+	  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+	  <div class="w3-bar">
+	    <div class="btn-group">
+	      {{ if .PreviousChapterLink  }}
+	      <button onclick="window.location.href = '{{.PreviousChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> < </button>
+	                                                                                                                                {{ end }}
+	                                                                                                                                <button onclick="window.location.href = '{{.ListAllBooksLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Books</button>
+	                                                                                                                                {{ if .NextChapterLink  }}
+	                                                                                                                                <button onclick="window.location.href = '{{.NextChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> > </button>
+	      {{ end }}
+	    </div>
+	</body>
 </html>
-`
+	`
+
+	// 	versesTemplate = `
+	// {{.Chapter}}
+	// {{ if .StartVerse}}
+	// {{.StartVerse}}
+	// {{.EndVerse}}
+	// {{end}}
+	// `
 	chapterButtonsTemplate = `
 <!DOCTYPE html>
 <html>

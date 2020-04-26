@@ -668,6 +668,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 			ListAllBooksLink    string
 			StartVerse          int
 			EndVerse            int
+			SingleVerse         int
 		}{
 			Color:            kjv.GetRandomColor(),
 			ListAllBooksLink: "../../list_books?json=false",
@@ -755,7 +756,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// verse.Verse = rVerse
+		verses.SingleVerse = rVerse
 
 		// Query the database
 		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse=%s",
@@ -787,22 +788,10 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//////////////////////////
-	// Template time        //
-	//////////////////////////
-	// add function to increment range indexing since it starts at 0 by default
-	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
-	verseLink := template.FuncMap{"verseLink": func(x int) string {
-
-		verseOffSet := strconv.Itoa(x + 1)
-
-		return fmt.Sprintf("%s/%s?json=false",
-			strconv.Itoa(verses.Chapter),
-			verseOffSet,
-		)
-	}}
-
-	t, err := template.New("chapter").Funcs(funcs).Funcs(verseLink).Parse(versesTemplate)
+	////////////////////////////
+	// Create Template	  //
+	////////////////////////////
+	t, err := template.New("chapter").Parse(versesTemplate)
 
 	if err != nil {
 		panic(err)
