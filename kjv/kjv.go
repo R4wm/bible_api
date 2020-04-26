@@ -661,11 +661,13 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		verses = struct {
 			BookName            string
 			Chapter             int
-			Verses              []string
+			Verses              []map[int]string
 			Color               string
 			NextChapterLink     string
 			PreviousChapterLink string
 			ListAllBooksLink    string
+			StartVerse          int
+			EndVerse            int
 		}{
 			Color:            kjv.GetRandomColor(),
 			ListAllBooksLink: "../../list_books?json=false",
@@ -716,13 +718,13 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Checking for valid range: ", requestVars["verse"])
 		verseRange := strings.Split(requestVars["verse"], "-")
 
-		start, err := strconv.Atoi(verseRange[0])
+		verses.StartVerse, err = strconv.Atoi(verseRange[0])
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Verse range start is not valid: %s", verseRange[0]), http.StatusBadRequest)
 			return
 		}
 
-		end, err := strconv.Atoi(verseRange[1])
+		verses.EndVerse, err = strconv.Atoi(verseRange[1])
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Verse range end is not valid: %s", verseRange[1]), http.StatusBadRequest)
 			return
@@ -730,10 +732,10 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 		// Create the sqlverseRange
 		sqlVerseRange := ""
-		for i := start; i < end; i++ {
+		for i := verses.StartVerse; i < verses.EndVerse; i++ {
 			sqlVerseRange = sqlVerseRange + strconv.Itoa(i) + ","
 		}
-		sqlVerseRange = sqlVerseRange + strconv.Itoa(end)
+		sqlVerseRange = sqlVerseRange + strconv.Itoa(verses.EndVerse)
 
 		log.Printf("sql verse range: %s", sqlVerseRange)
 
@@ -777,7 +779,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		rows.Scan(&verseNum, &text)
-		verses.Verses = append(verses.Verses, text)
+		verses.Verses = append(verses.Verses, map[int]string{verseNum: text})
 	}
 
 	if wantsJson(r) {
