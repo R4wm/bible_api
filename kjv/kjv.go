@@ -18,71 +18,7 @@ import (
 	kjv "github.com/r4wm/mintz5"
 )
 
-const (
-	lastCardinalVerseNum = 31101
-
-	verseTemplate = `
-<!DOCTYPE html>
-<html>
-   <body style="background-color:{{ .Color }};">
-      <h1>
-	 <center>
-           <a href={{.ChapterRef}}>{{ .Verse.Book }} {{ .Verse.Chapter }}</a> : {{ .Verse.Verse }}
-         </center>
-      </h1>
-      <h3>
-	 <center>{{ .Verse.Text }}</center>
-      </h3>
-   </body>
-</html>
-`
-	chapterTemplate = `
-<html>
-<style>
-.btn-group button {
-  background-color: gold; /* Green background */
-  border: 1px solid green; /* Green border */
-  color: black;
-  padding: 10px 24px; /* Some padding */
-  cursor: pointer; /* Pointer/hand icon */
-  float: center; /* Float the buttons side by side */
-}
-/* Clear floats (clearfix hack) */
-.btn-group:after {
-  content: "";
-  clear: both;
-  display: table;
-}
-.btn-group button:not(:last-child) {
-  border-right: none; /* Prevent double borders */
-}
-/* Add a background color on hover */
-.btn-group button:hover {
-  background-color: #3e8e41;
-}
-</style>
-  <body style="background-color:{{ .Color }};">
-    <h1><center>{{ .BookName }} {{ .Chapter }}</h1>
-  <body>
-    {{ range $index, $results := .Verses }}
-    <p><b><left><a href={{ verseLink $index }}> {{ add $index 1}}</a> {{ . }} </b></p>
-    {{ end }}
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-    <div class="w3-bar">
-    <div class="btn-group">
-    {{ if .PreviousChapterLink  }}
-    <button onclick="window.location.href = '{{.PreviousChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> < </button>
-    {{ end }}
-    <button onclick="window.location.href = '{{.ListAllBooksLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Books</button>
-    {{ if .NextChapterLink  }}
-    <button onclick="window.location.href = '{{.NextChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> > </button>
-    {{ end }}
-    </div>
-  </body>
-</html>
-`
-)
+const lastCardinalVerseNum = 31101
 
 var (
 	BookChapterLimit = map[string]int{
@@ -183,38 +119,6 @@ func (app *App) SetupRouter() {
 
 }
 
-const booksButtonsTemplate = `
-<!DOCTYPE html>
-<html>
-   <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <style>
-	 .block {
-	 display: block;
-	 width: 100%;
-	 border: none;
-	 background-color: #4CAF50;
-	 color: white;
-	 padding: 14px 28px;
-	 font-size: 16px;
-	 cursor: pointer;
-	 text-align: center;
-	 }
-	 .block:hover {
-	 background-color: #ddd;
-	 color: black;
-	 }
-      </style>
-      <title>Books of the Bible</title>
-   </head>
-   <body style="background-color:{{ .Color }};">
-      {{ range $key, $value := .Books }}
-      <p><button class="block" onclick="window.location.href= '{{ createLink $value }}';" >{{ $value }}</button></p>
-      {{ end }}
-   </body>
-</html>
-`
-
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 
 	books := []string{
@@ -311,39 +215,6 @@ func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 
 	t.Execute(w, booksStruct)
 }
-
-const chapterButtonsTemplate = `
-<!DOCTYPE html>
-<html>
-   <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <style>
-	 .block {
-	 display: block;
-	 width: 100%;
-	 border: none;
-	 background-color: #4CAF50;
-	 color: white;
-	 padding: 14px 28px;
-	 font-size: 16px;
-	 cursor: pointer;
-	 text-align: center;
-	 }
-	 .block:hover {
-	 background-color: #ddd;
-	 color: black;
-	 }
-      </style>
-      <title>{{ .Name }}</title>
-   </head>
-   <body style="background-color:{{ .Color }};">
-     <p><center><h1> {{ .Name }} </h1><center></p>
-     {{ range $index, $results := .Links }}
-       <p><button class="block" onclick="window.location.href = '{{ $results }}'">{{ add $index 1 }}</button></p>
-     {{ end }}
-   </body>
-</html>
-`
 
 func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -564,20 +435,6 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 			"/")
 	}}
 
-	const searchResultTemplate = `
-<!DOCTYPE html>
-<html>
-
-      {{range .Verses }}
-	 <center>   
-           <p> <a href="{{ createLink .}}">{{ .Book }} {{ .Chapter }}:{{ .Verse}} </a></p>
-           <p> {{ .Text }} </p>
-         </center>
-      {{ end }}
-
-   </body>
-</html>
-`
 	tmpl, err := template.New("results").Funcs(funcs).Parse(searchResultTemplate)
 	if err != nil {
 		fmt.Println("Failed to parse template..")
@@ -801,9 +658,23 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	var (
-		verse       Verse
-		bookFound   bool
+		verses = struct {
+			BookName            string
+			Chapter             int
+			Verses              []map[int]string
+			Color               string
+			NextChapterLink     string
+			PreviousChapterLink string
+			ListAllBooksLink    string
+			StartVerse          int
+			EndVerse            int
+			SingleVerse         int
+		}{
+			Color:            kjv.GetRandomColor(),
+			ListAllBooksLink: "../../list_books?json=false",
+		}
 		requestVars = mux.Vars(r)
+		bookFound   bool
 	)
 
 	//check the book actually exists
@@ -825,34 +696,77 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	verse.Book = requestVars["book"]
+	verses.BookName = requestVars["book"]
 
 	// Check Chapter
 	rChapter, err := strconv.Atoi(requestVars["chapter"])
 	if err != nil {
-		msg := fmt.Sprintf("%s is not an integer chapter\n", requestVars["chapter"])
+		msg := fmt.Sprintf("Chapter %s is not an integer chapter\n", requestVars["chapter"])
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
 
-	verse.Chapter = rChapter
+	verses.Chapter = rChapter
 
 	// Check Verse
-	rVerse, err := strconv.Atoi(requestVars["verse"])
-	if err != nil {
-		msg := fmt.Sprintf("%s is not an integer verse reference\n", requestVars["chapter"])
-		http.Error(w, msg, http.StatusBadRequest)
-		return
+	isVerseRange := strings.Contains(requestVars["verse"], "-")
+	log.Println("Verse has hyphen, assuming range")
+
+	stmt := ""
+
+	if isVerseRange {
+		// Multiple Verse
+		log.Printf("Checking for valid range: ", requestVars["verse"])
+		verseRange := strings.Split(requestVars["verse"], "-")
+
+		verses.StartVerse, err = strconv.Atoi(verseRange[0])
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Verse range start is not valid: %s", verseRange[0]), http.StatusBadRequest)
+			return
+		}
+
+		verses.EndVerse, err = strconv.Atoi(verseRange[1])
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Verse range end is not valid: %s", verseRange[1]), http.StatusBadRequest)
+			return
+		}
+
+		// Create the sqlverseRange
+		sqlVerseRange := ""
+		for i := verses.StartVerse; i < verses.EndVerse; i++ {
+			sqlVerseRange = sqlVerseRange + strconv.Itoa(i) + ","
+		}
+		sqlVerseRange = sqlVerseRange + strconv.Itoa(verses.EndVerse)
+
+		log.Printf("sql verse range: %s", sqlVerseRange)
+
+		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse in (%s)\n",
+			requestVars["book"],
+			strconv.Itoa(rChapter),
+			sqlVerseRange)
+
+		log.Printf("Multi verse sql query: %s", stmt)
+
+	} else {
+		// Single verse
+		rVerse, err := strconv.Atoi(requestVars["verse"])
+		if err != nil {
+			msg := fmt.Sprintf("Verse %s is not an integer verse reference\n", requestVars["chapter"])
+			http.Error(w, msg, http.StatusBadRequest)
+			return
+		}
+
+		verses.SingleVerse = rVerse
+
+		// Query the database
+		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse=%s",
+			requestVars["book"],
+			strconv.Itoa(rChapter),
+			strconv.Itoa(rVerse),
+		)
+
+		log.Printf("Single verse sql query: %s\n", stmt)
 	}
-
-	verse.Verse = rVerse
-
-	// Query the database
-	stmt := fmt.Sprintf("select text from kjv where book=\"%s\" and chapter=%s and verse=%s",
-		requestVars["book"],
-		strconv.Itoa(rChapter),
-		strconv.Itoa(rVerse),
-	)
 
 	rows, err := app.Database.Query(stmt)
 	if err != nil {
@@ -861,55 +775,27 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	var verseNum int
+	var text string
+
 	for rows.Next() {
-		rows.Scan(&verse.Text)
+		rows.Scan(&verseNum, &text)
+		verses.Verses = append(verses.Verses, map[int]string{verseNum: text})
 	}
 
-	// Check results from DB
-	if len(verse.Text) <= 0 {
-		msg := fmt.Sprintf("Got nothing back from database: %s", stmt)
-		http.Error(w, msg, http.StatusInternalServerError)
-
-	}
-
-	// Return json response if requested
 	if wantsJson(r) {
-		jsonizeResponse(verse, w, r)
+		jsonizeResponse(verses, w, r)
 		return
 	}
 
-	// Make pretty web page from template
-	tmpl, err := template.New("Basic").Parse(verseTemplate)
+	////////////////////////////
+	// Create Template	  //
+	////////////////////////////
+	t, err := template.New("chapter").Parse(versesTemplate)
 
-	// Handle template errors.
 	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to parse template"))
-		log.Println(err)
-		return
+		panic(err)
 	}
 
-	// create the data struct for template
-
-	returnPage := struct {
-		Verse      Verse
-		Color      string
-		ChapterRef string
-	}{
-		Verse:      verse,
-		Color:      kjv.GetRandomColor(),
-		ChapterRef: fmt.Sprintf("../%s", strconv.Itoa(verse.Chapter)),
-	}
-
-	// Ok Serve it pretty
-	err = tmpl.Execute(w, returnPage)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to write to Writer"))
-		log.Println(err)
-		return
-	}
-
+	t.Execute(w, verses)
 }
