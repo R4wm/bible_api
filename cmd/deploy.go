@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -14,15 +15,15 @@ import (
 
 func main() {
 
-	dbPathp := flag.String("dbPath", "/tmp/kjv.db", "Path to kjv database.")
+	dbPath := flag.String("dbPath", "/tmp/kjv.db", "Path to kjv database.")
 	createDB := flag.Bool("createDB", false, "Create the kjv database.")
 	flag.Parse()
 
 	// Create the DB if asked
 	if *createDB == true {
-		path, err := os.Stat(*dbPathp)
+		path, err := os.Stat(*dbPath)
 		if os.IsNotExist(err) {
-			_, err := sqlite3_kjv.CreateKJVDB(*dbPathp)
+			_, err := sqlite3_kjv.CreateKJVDB(*dbPath)
 
 			if err != nil {
 				panic(err)
@@ -33,14 +34,16 @@ func main() {
 	}
 
 	// Check the db path exists
-	_, err := os.Stat(*dbPathp)
+	_, err := os.Stat(*dbPath)
 	if os.IsNotExist(err) {
-		log.Errorf("database path does not exist: %s", *dbPathp)
+		log.Errorf("database path does not exist: %s", *dbPath)
+		fmt.Println("Provide dbPath else use createDB argument")
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
 	// Create database connection
-	db, err := db.CreateDatabase(*dbPathp)
+	db, err := db.CreateDatabase(*dbPath)
 	if err != nil {
 		panic(err)
 	}
