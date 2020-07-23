@@ -15,7 +15,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	kjv "github.com/r4wm/mintz5"
+	kjv "github.com/r4wm/bible_api"
 )
 
 const lastCardinalVerseNum = 31101
@@ -385,10 +385,9 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
-		msg := fmt.Sprintf("Failed to query: %s\n")
-		w.Write([]byte(msg))
-		return
+		w.Write([]byte("Failed database query!"))
 		log.Println(err)
+		return
 	}
 
 	regexCount := 0
@@ -710,13 +709,12 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 	// Check Verse
 	isVerseRange := strings.Contains(requestVars["verse"], "-")
-	log.Println("Verse has hyphen, assuming range")
 
 	stmt := ""
 
 	if isVerseRange {
 		// Multiple Verse
-		log.Printf("Checking for valid range: ", requestVars["verse"])
+		log.Printf("Checking for valid range: %s", requestVars["verse"])
 		verseRange := strings.Split(requestVars["verse"], "-")
 
 		verses.StartVerse, err = strconv.Atoi(verseRange[0])

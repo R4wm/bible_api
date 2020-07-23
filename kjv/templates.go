@@ -73,7 +73,7 @@ const (
 }
 </style>
   <body style="background-color:{{ .Color }};">
-    <h1><center>{{ .BookName }} {{ .Chapter }}</h1>
+    <h1><center><a href=../{{.BookName}}>{{ .BookName }}</a> {{ .Chapter }}</h1>
   <body>
     {{ range $index, $results := .Verses }}
     <p><b><left><a href={{ verseLink $index }}> {{ add $index 1}}</a> {{ . }} </b></p>
@@ -96,6 +96,7 @@ const (
 
 	versesTemplate = `
 <html>
+<title>{{.BookName}} {{.Chapter}}:{{.SingleVerse}}</title>
   <style>
     .btn-group button {
     background-color: gold; /* Green background */
@@ -120,9 +121,9 @@ const (
     }
   </style>
   <body style="background-color:{{ .Color }};">
-    {{if .StartVerse}}<h1><center>{{ .BookName }} {{ .Chapter }}:{{.StartVerse}}-{{.EndVerse}}</h1>
+    {{if .StartVerse}}<h1><center><a href={{.BookName}}>{{ .BookName }} {{ .Chapter }}</a>:{{.StartVerse}}-{{.EndVerse}}</h1>
     {{else}}
-    <h1><center>{{ .BookName }} {{ .Chapter }}:{{.SingleVerse}}
+    <h1><center><a href="../{{.Chapter}}">{{ .BookName }} {{ .Chapter }}</a>:{{.SingleVerse}}
     {{end}}
 	<body>
 	  {{ range $index, $results := .Verses }}
@@ -146,13 +147,6 @@ const (
 </html>
 	`
 
-	// 	versesTemplate = `
-	// {{.Chapter}}
-	// {{ if .StartVerse}}
-	// {{.StartVerse}}
-	// {{.EndVerse}}
-	// {{end}}
-	// `
 	chapterButtonsTemplate = `
 <!DOCTYPE html>
 <html>

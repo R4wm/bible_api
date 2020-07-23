@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
+	"github.com/r4wm/bible_api/kjv"
 	"github.com/r4wm/mintz5/db"
-	"github.com/r4wm/mintz5/kjv"
 	"github.com/r4wm/sqlite3_kjv"
 	log "github.com/sirupsen/logrus"
 )
