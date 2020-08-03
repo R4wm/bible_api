@@ -35,16 +35,19 @@ const (
 	verseTemplate = `
 <!DOCTYPE html>
 <html>
-   <body style="background-color:{{ .Color }};">
-      <h1>
-	 <center>
-	   <a href={{.ChapterRef}}>{{ .Verse.Book }} {{ .Verse.Chapter }}</a> : {{ .Verse.Verse }}
-	 </center>
-      </h1>
-      <h3>
-	 <center>{{ .Verse.Text }}</center>
-      </h3>
-   </body>
+  <body style="background-color:{{ .Color }};">
+    <h1>
+      <center>
+	<a href={{.ChapterRef}}>{{ .Verse.Book }} {{ .Verse.Chapter }}</a> : {{ .Verse.Verse }}
+      </center>
+    </h1>
+    <h3>
+      <center>{{ .Verse.Text }}</center>
+    </h3>
+    <center>
+      <button onclick="window.location.href = '{{.ListAllBooksLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Books</button>
+    </center>
+  </body>
 </html>
 `
 	chapterTemplate = `

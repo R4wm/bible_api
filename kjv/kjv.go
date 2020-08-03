@@ -108,6 +108,7 @@ func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
 	app.Router.HandleFunc("/bible/list_books/", app.listBooks)
 	app.Router.HandleFunc("/bible/list_books", app.listBooks) // why do i have to be explicit about the post slash here..
+	app.Router.HandleFunc("/bible/daily", app.getDaily)
 
 	t := app.Router.PathPrefix("/bible/list_chapters").Subrouter()
 	t.HandleFunc("/{book}", app.listChapters)
@@ -116,6 +117,7 @@ func (app *App) SetupRouter() {
 	s.HandleFunc("/{book}", app.getBook)
 	s.HandleFunc("/{book}/{chapter}", app.getChapter)
 	s.HandleFunc("/{book}/{chapter}/{verse}", app.getVerse)
+	s.HandleFunc("/daily", app.getDaily)
 
 }
 
@@ -653,6 +655,53 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t.Execute(w, verses)
+}
+
+//getDaily Returns json formatted verses
+func (app *App) getDaily(w http.ResponseWriter, r *http.Request) {
+	// Note: output will be json only for now
+	type dailyReading struct {
+		Book            int
+		Chapter         int
+		Verse           int
+		Text            string
+		OrdinalVerseNum int
+		Testamant       string
+	}
+
+	otVerses, ntVerses := getReadingRanges(time.Now().YearDay())
+
+	fmt.Println(otVerses, ntVerses)
+	fmt.Printf("%#v\n", otVerses)
+
+	stmt := "select book from kjv where book=\"GENESIS\""
+	// otVerses.StartOrdinalVerse,
+	// otVerses.EndOrdinalVerse)
+
+	fmt.Println("stmt: ", stmt)
+
+	rows, err := app.Database.Query(stmt)
+	defer rows.Close()
+
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("400 - Could not query such a request: "))
+		return
+	}
+
+	// read := [2000]dailyReading{}
+
+	var bookThing int
+
+	for rows.Next() {
+		// rows.Scan(&book, &chapter, &verse, &text, &ordinalVerse, &testament)
+		// fmt.Println(book)
+		rows.Scan(&bookThing)
+		fmt.Println(bookThing)
+	}
+
+	// jsonizeResponse(read, w, r)
 }
 
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
