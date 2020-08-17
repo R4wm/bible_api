@@ -153,33 +153,34 @@ const (
 	chapterButtonsTemplate = `
 <!DOCTYPE html>
 <html>
-   <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <style>
-	 .block {
-	 display: block;
-	 width: 100%;
-	 border: none;
-	 background-color: #4CAF50;
-	 color: white;
-	 padding: 14px 28px;
-	 font-size: 16px;
-	 cursor: pointer;
-	 text-align: center;
-	 }
-	 .block:hover {
-	 background-color: #ddd;
-	 color: black;
-	 }
-      </style>
-      <title>{{ .Name }}</title>
-   </head>
-   <body style="background-color:{{ .Color }};">
-     <p><center><h1> {{ .Name }} </h1><center></p>
-     {{ range $index, $results := .Links }}
-       <p><button class="block" onclick="window.location.href = '{{ $results }}'">{{ add $index 1 }}</button></p>
-     {{ end }}
-   </body>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      .block {
+      display: block;
+      width: 100%;
+      border: none;
+      background-color: #4CAF50;
+      color: white;
+      padding: 14px 28px;
+      font-size: 16px;
+      cursor: pointer;
+      text-align: center;
+      }
+      .block:hover {
+      background-color: #ddd;
+      color: black;
+      }
+    </style>
+    <title>{{ .Name }}</title>
+  </head>
+  <body style="background-color:{{ .Color }};">
+    <p><center><h1> {{ .Name }} </h1><center></p>
+    <button onclick="window.location.href='../bible/list_books';" class="w3-bar-item w3-button" style="width:33.3%">Books Menu</button>
+    {{ range $index, $results := .Links }}
+    <p><button class="block" onclick="window.location.href = '{{ $results }}'">{{ add $index 1 }}</button></p>
+    {{ end }}
+  </body>
 </html>
 `
 
