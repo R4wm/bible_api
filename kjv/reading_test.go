@@ -1,40 +1,72 @@
 package kjv
 
 import (
-	"fmt"
 	"testing"
 )
 
-func TestStuff(t *testing.T) {
-	otResult, ntResult := getReadingRanges(1)
-	fmt.Println(otResult, ntResult)
-	fmt.Printf("%#v\n", otResult)
-	fmt.Printf("%T %T\n", otResult, ntResult)
-	fmt.Println("ok")
-
-	dayOneVerse := 1
-	if otResult.StartOrdinalVerse != dayOneVerse {
-		t.Fatalf("Expected %d for starting OT Verse, got %d\n",
-			dayOneVerse,
-			otResult.StartOrdinalVerse)
+func TestGetOldTestamentDailyRangeStartFistDay(t *testing.T) {
+	expectedStart := 1
+	expectedEnd := 64
+	result := GetOldTestamentDailyRange(1, []string{})
+	if result.StartOrdinalVerse != expectedStart {
+		t.Errorf("Expected %d, got %d", expectedStart, result.StartOrdinalVerse)
 	}
 
-	if otResult.EndOrdinalVerse != 23 {
-		t.Fatalf("Expected %d for starting OT Verse, got %d\n",
-			23,
-			otResult.EndOrdinalVerse)
+	if result.EndOrdinalVerse != expectedEnd {
+		t.Errorf("Last verse expected: %d, got %d\n", expectedStart, expectedEnd)
 	}
+}
 
-	if ntResult.StartOrdinalVerse != dayOneVerse {
-		t.Fatalf("Expected %d for starting OT Verse, got %d\n",
-			dayOneVerse,
-			ntResult.StartOrdinalVerse)
+func TestGetOldTestamentDailyRangeVerseCount(t *testing.T) {
+	expectedCount := 63 // 1954 - 1891
+	result := GetOldTestamentDailyRange(31, []string{})
+	if result.TotalVerseCount != expectedCount {
+		t.Errorf("Expected %d got %d", expectedCount, result.TotalVerseCount)
 	}
+}
 
-	if ntResult.EndOrdinalVerse != 64 {
-		t.Fatalf("Expected %d for starting OT Verse, got %d\n",
-			64,
-			ntResult.EndOrdinalVerse)
+func TestGetOldTestamentDailyRangeStartSecondDay(t *testing.T) {
+	expectedStart := 64
+	result := GetOldTestamentDailyRange(2, []string{})
+	if result.StartOrdinalVerse != expectedStart {
+		t.Errorf("Expected %d, got %d", expectedStart, result.StartOrdinalVerse)
+	}
+}
+
+func TestGetOldTestamentDailyRangeEnd(t *testing.T) {
+	expectedEnd := 1954
+	result := GetOldTestamentDailyRange(31, []string{})
+	if result.EndOrdinalVerse != expectedEnd {
+		t.Errorf("Expected %d got %d", expectedEnd, result.EndOrdinalVerse)
+	}
+}
+
+func TestGetOldTestamentDailyRangeLastDay(t *testing.T) {
+	expectedLastOTVerse := 23145
+	result := GetOldTestamentDailyRange(365, []string{})
+	if result.EndOrdinalVerse != expectedLastOTVerse {
+		t.Errorf("Last OT ordinal verse is wrong, should be %d got %d",
+			expectedLastOTVerse, result.EndOrdinalVerse)
+	}
+}
+
+func TestOTExceptProverbs(t *testing.T) {
+	expectedLastOTVerse := 23145
+	result := GetOldTestamentDailyRange(365, []string{"proverbs"})
+	if result.EndOrdinalVerse != expectedLastOTVerse {
+		t.Errorf("Last OT ordinal verse is wrong, should be %d got %d",
+			expectedLastOTVerse, result.EndOrdinalVerse)
 	}
 
 }
+
+// func TestProverbsExclusionFromOTRange(t *testing.T) {
+// 	var proverbsEnd int = PsalmsOrdinalStart - 1
+// 	for i := 1; i < 365; i++ {
+// 		result := GetOldTestamentDailyRange(i, []string{"proverbs"})
+// 		if !(result.StartOrdinalVerse >= ProverbsOrdinalStart || result.StartOrdinalVerse <= proverbsEnd) {
+// 			t.Errorf("Proverbs Start verse found when excluded: %#v\n", result)
+// 		}
+
+// 	}
+// }
