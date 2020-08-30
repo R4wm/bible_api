@@ -110,6 +110,8 @@ func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/list_books", app.listBooks) // why do i have to be explicit about the post slash here..
 	app.Router.HandleFunc("/bible/daily/proverbs", app.GetDailyProverbs)
 	app.Router.HandleFunc("/bible/daily/psalms", app.GetDailyPsalms)
+	app.Router.HandleFunc("/bible/daily/ot", app.GetDailyOldTestament)
+	app.Router.HandleFunc("/bible/daily/nt", app.GetDailyNewTestament)
 	// app.Router.HandleFunc("/bible/daily", app.getDaily)
 
 	t := app.Router.PathPrefix("/bible/list_chapters").Subrouter()
@@ -122,6 +124,8 @@ func (app *App) SetupRouter() {
 	// TODO: Make this clean , reusable based on book
 	s.HandleFunc("/daily/proverbs", app.GetDailyProverbs)
 	s.HandleFunc("/daily/psalms", app.GetDailyPsalms)
+	s.HandleFunc("/daily/ot", app.GetDailyOldTestament)
+	s.HandleFunc("/daily/nt", app.GetDailyNewTestament)
 	// s.HandleFunc("/daily", app.getDaily)
 
 }
@@ -714,6 +718,60 @@ func (app *App) GetDailyPsalms(w http.ResponseWriter, r *http.Request) {
 	// TODO: Render HTML response , just JSON for now cause time
 	jsonizeResponse(versesFromPsalms, w, r)
 	return
+}
+
+func (app *App) GetDailyOldTestament(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Old Testament Daily Range")
+	versesFromOT := []Verse{}
+
+	t := time.Now()
+	OTReading := GetOldTestamentDailyRange(t.YearDay(), []string{})
+	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", OTReading.StartOrdinalVerse, OTReading.EndOrdinalVerse)
+	fmt.Println(stmt)
+	rows, err := app.Database.Query(stmt)
+
+	if err != nil {
+		log.Fatalf("Failed to get verses for OT Reading")
+	}
+
+	for rows.Next() {
+		v := Verse{}
+		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
+		// fmt.Printf("%#v\n", v)
+		versesFromOT = append(versesFromOT, v)
+	}
+
+	// TODO: Render HTML response , just JSON for now cause time
+	jsonizeResponse(versesFromOT, w, r)
+	return
+
+}
+
+func (app *App) GetDailyNewTestament(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("New Testament Daily Range")
+	versesFromNT := []Verse{}
+
+	t := time.Now()
+	NTReading := GetNewTestamentDailyRange(t.YearDay())
+	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", NTReading.StartOrdinalVerse, NTReading.EndOrdinalVerse)
+	fmt.Println(stmt)
+	rows, err := app.Database.Query(stmt)
+
+	if err != nil {
+		log.Fatalf("Failed to get verses for NT Reading")
+	}
+
+	for rows.Next() {
+		v := Verse{}
+		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
+		// fmt.Printf("%#v\n", v)
+		versesFromNT = append(versesFromNT, v)
+	}
+
+	// TODO: Render HTML response , just JSON for now cause time
+	jsonizeResponse(versesFromNT, w, r)
+	return
+
 }
 
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
