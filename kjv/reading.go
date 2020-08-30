@@ -1,31 +1,226 @@
 package kjv
 
+import (
+	"math"
+	"time"
+)
+
+// sqlite> select count(text) from kjv where book="PSALMS";
+// 2461
+// sqlite> select count(text) from kjv where book="PROVERBS";
+// 915
+// sqlite> select count(text) from kjv where testament="OLD";
+// 23145
+// sqlite> select count(text) from kjv where testament="NEW";
+// 7956
+// sqlite>
+
+////////////////////////////////////////////////////////////////////////
+// TODO: Most of these functions could be reusable, consolidate later //
+////////////////////////////////////////////////////////////////////////
 const (
+	DaysInYear             = 365
 	VerseCountOldTestament = 23145
-	VerseCountNewTestament = 7957
-	DaysOfYear             = 365
+	VerseCountNewTestament = 7956
+	VerseCountPsalms       = 2461
+	VerseCountProverbs     = 915
+	PsalmsOrdinalStart     = 13941 // This is where Psalms starts
+	ProverbsOrdinalStart   = 16402 // This is where Proverbs starts
+	PsalmsOrdinalEnd       = ProverbsOrdinalStart - 1
+	ProverbsOrdinalEnd     = 17316
+	FirstOrdinalVerseOT    = 1
+	FirstOrdinalVerseNT    = 23146
+	TotalVersesInBible     = 31101
 )
 
-var (
-	OTReadingIncrements = [DaysOfYear]int{1, 64, 128, 191, 255, 318, 381, 445, 508, 572, 635, 699, 762, 825, 889, 952, 1016, 1079, 1142, 1206, 1269, 1333, 1396, 1459, 1523, 1586, 1650, 1713, 1777, 1840, 1903, 1967, 2030, 2094, 2157, 2220, 2284, 2347, 2411, 2474, 2537, 2601, 2664, 2728, 2791, 2854, 2918, 2981, 3045, 3108, 3172, 3235, 3298, 3362, 3425, 3489, 3552, 3615, 3679, 3742, 3806, 3869, 3932, 3996, 4059, 4123, 4186, 4250, 4313, 4376, 4440, 4503, 4567, 4630, 4693, 4757, 4820, 4884, 4947, 5010, 5074, 5137, 5201, 5264, 5328, 5391, 5454, 5518, 5581, 5645, 5708, 5771, 5835, 5898, 5962, 6025, 6088, 6152, 6215, 6279, 6342, 6406, 6469, 6532, 6596, 6659, 6723, 6786, 6849, 6913, 6976, 7040, 7103, 7166, 7230, 7293, 7357, 7420, 7483, 7547, 7610, 7674, 7737, 7801, 7864, 7927, 7991, 8054, 8118, 8181, 8244, 8308, 8371, 8435, 8498, 8561, 8625, 8688, 8752, 8815, 8879, 8942, 9005, 9069, 9132, 9196, 9259, 9322, 9386, 9449, 9513, 9576, 9639, 9703, 9766, 9830, 9893, 9957, 10020, 10083, 10147, 10210, 10274, 10337, 10400, 10464, 10527, 10591, 10654, 10717, 10781, 10844, 10908, 10971, 11035, 11098, 11161, 11225, 11288, 11352, 11415, 11478, 11542, 11605, 11669, 11732, 11795, 11859, 11922, 11986, 12049, 12112, 12176, 12239, 12303, 12366, 12430, 12493, 12556, 12620, 12683, 12747, 12810, 12873, 12937, 13000, 13064, 13127, 13190, 13254, 13317, 13381, 13444, 13508, 13571, 13634, 13698, 13761, 13825, 13888, 13951, 14015, 14078, 14142, 14205, 14268, 14332, 14395, 14459, 14522, 14586, 14649, 14712, 14776, 14839, 14903, 14966, 15029, 15093, 15156, 15220, 15283, 15346, 15410, 15473, 15537, 15600, 15664, 15727, 15790, 15854, 15917, 15981, 16044, 16107, 16171, 16234, 16298, 16361, 16424, 16488, 16551, 16615, 16678, 16741, 16805, 16868, 16932, 16995, 17059, 17122, 17185, 17249, 17312, 17376, 17439, 17502, 17566, 17629, 17693, 17756, 17819, 17883, 17946, 18010, 18073, 18137, 18200, 18263, 18327, 18390, 18454, 18517, 18580, 18644, 18707, 18771, 18834, 18897, 18961, 19024, 19088, 19151, 19215, 19278, 19341, 19405, 19468, 19532, 19595, 19658, 19722, 19785, 19849, 19912, 19975, 20039, 20102, 20166, 20229, 20293, 20356, 20419, 20483, 20546, 20610, 20673, 20736, 20800, 20863, 20927, 20990, 21053, 21117, 21180, 21244, 21307, 21370, 21434, 21497, 21561, 21624, 21688, 21751, 21814, 21878, 21941, 22005, 22068, 22131, 22195, 22258, 22322, 22385, 22448, 22512, 22575, 22639, 22702, 22766, 22829, 22892, 22956, 23019, 23083}
-
-	NTReadingIncrements = [DaysOfYear]int{1, 23, 45, 66, 88, 110, 132, 154, 175, 197, 219, 241, 263, 284, 306, 328, 350, 372, 393, 415, 437, 459, 481, 502, 524, 546, 568, 590, 611, 633, 655, 677, 699, 720, 742, 764, 786, 808, 829, 851, 873, 895, 917, 938, 960, 982, 1004, 1026, 1047, 1069, 1091, 1113, 1135, 1156, 1178, 1200, 1222, 1244, 1265, 1287, 1309, 1331, 1353, 1374, 1396, 1418, 1440, 1462, 1483, 1505, 1527, 1549, 1571, 1592, 1614, 1636, 1658, 1680, 1701, 1723, 1745, 1767, 1789, 1810, 1832, 1854, 1876, 1898, 1919, 1941, 1963, 1985, 2007, 2028, 2050, 2072, 2094, 2116, 2137, 2159, 2181, 2203, 2225, 2246, 2268, 2290, 2312, 2334, 2355, 2377, 2399, 2421, 2443, 2464, 2486, 2508, 2530, 2552, 2573, 2595, 2617, 2639, 2661, 2682, 2704, 2726, 2748, 2770, 2791, 2813, 2835, 2857, 2879, 2900, 2922, 2944, 2966, 2988, 3009, 3031, 3053, 3075, 3097, 3118, 3140, 3162, 3184, 3206, 3227, 3249, 3271, 3293, 3315, 3336, 3358, 3380, 3402, 3424, 3445, 3467, 3489, 3511, 3533, 3554, 3576, 3598, 3620, 3642, 3663, 3685, 3707, 3729, 3751, 3772, 3794, 3816, 3838, 3860, 3881, 3903, 3925, 3947, 3969, 3990, 4012, 4034, 4056, 4078, 4099, 4121, 4143, 4165, 4187, 4208, 4230, 4252, 4274, 4296, 4317, 4339, 4361, 4383, 4405, 4426, 4448, 4470, 4492, 4514, 4535, 4557, 4579, 4601, 4623, 4644, 4666, 4688, 4710, 4732, 4753, 4775, 4797, 4819, 4841, 4862, 4884, 4906, 4928, 4950, 4971, 4993, 5015, 5037, 5059, 5080, 5102, 5124, 5146, 5168, 5189, 5211, 5233, 5255, 5277, 5298, 5320, 5342, 5364, 5386, 5407, 5429, 5451, 5473, 5495, 5516, 5538, 5560, 5582, 5604, 5625, 5647, 5669, 5691, 5713, 5734, 5756, 5778, 5800, 5822, 5843, 5865, 5887, 5909, 5931, 5952, 5974, 5996, 6018, 6040, 6061, 6083, 6105, 6127, 6149, 6170, 6192, 6214, 6236, 6258, 6279, 6301, 6323, 6345, 6367, 6388, 6410, 6432, 6454, 6476, 6497, 6519, 6541, 6563, 6585, 6606, 6628, 6650, 6672, 6694, 6715, 6737, 6759, 6781, 6803, 6824, 6846, 6868, 6890, 6912, 6933, 6955, 6977, 6999, 7021, 7042, 7064, 7086, 7108, 7130, 7151, 7173, 7195, 7217, 7239, 7260, 7282, 7304, 7326, 7348, 7369, 7391, 7413, 7435, 7457, 7478, 7500, 7522, 7544, 7566, 7587, 7609, 7631, 7653, 7675, 7696, 7718, 7740, 7762, 7784, 7805, 7827, 7849, 7871, 7893, 7914, 7936}
-)
-
-type Reading struct {
+type ReadingSchedule struct {
 	StartOrdinalVerse int
 	EndOrdinalVerse   int
+	TotalVerseCount   int
 }
 
-// Returns Reading schedule for OT and NT
-// NOTE: dayOfYear comes as int but should be received from time.Now().YearDay()
-func getReadingRanges(dayOfYear int) (Reading, Reading) {
+func GetDaysInMonth() int {
+	t := time.Now()
+	return time.Date(t.Year(), t.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
 
-	OTReading := Reading{StartOrdinalVerse: OTReadingIncrements[dayOfYear-1],
-		EndOrdinalVerse: OTReadingIncrements[dayOfYear]}
+func GetProverbsDailyRange(daysInMonth, currentDay int) ReadingSchedule {
+	// fmt.Println(kjv.GetProverbsDailyRange(kjv.GetDaysInMonth(), time.Now().Day()))
 
-	NTReading := Reading{StartOrdinalVerse: NTReadingIncrements[dayOfYear-1],
-		EndOrdinalVerse: NTReadingIncrements[dayOfYear]}
+	verseCountPerDay := int(math.Ceil(float64(VerseCountProverbs / daysInMonth)))
 
-	return NTReading, OTReading
+	// Set beginning ordinal verse number for today
+	startReadingAt := ProverbsOrdinalStart
+	for i := 1; i < currentDay; i++ {
+		startReadingAt += verseCountPerDay
+	}
+
+	// Because we round off, we have to detemine if this is the last day of the month
+	isLastDay := daysInMonth == currentDay
+
+	if isLastDay {
+		return ReadingSchedule{
+			StartOrdinalVerse: startReadingAt,
+			EndOrdinalVerse:   ProverbsOrdinalEnd,
+			TotalVerseCount:   ProverbsOrdinalEnd - startReadingAt,
+		}
+	}
+
+	// isNotLastDay
+	return ReadingSchedule{
+		StartOrdinalVerse: startReadingAt,
+		EndOrdinalVerse:   startReadingAt + verseCountPerDay,
+		TotalVerseCount:   (startReadingAt + verseCountPerDay) - startReadingAt,
+	}
+}
+
+func GetPsalmsDailyRange(daysInMonth, currentDay int) ReadingSchedule {
+	// fmt.Println(kjv.GetPsalmsDailyRange(kjv.GetDaysInMonth(), time.Now().Day()))
+
+	verseCountPerDay := int(math.Ceil(float64(VerseCountPsalms / daysInMonth)))
+
+	// Set beginning ordinal verse number for today
+	startReadingAt := PsalmsOrdinalStart
+	for i := 1; i < currentDay; i++ {
+		startReadingAt += verseCountPerDay
+	}
+
+	// Because we round off, we have to detemine if this is the last day of the month
+	isLastDay := daysInMonth == currentDay
+
+	if isLastDay {
+		return ReadingSchedule{
+			StartOrdinalVerse: startReadingAt,
+			EndOrdinalVerse:   PsalmsOrdinalEnd,
+			TotalVerseCount:   PsalmsOrdinalEnd - startReadingAt,
+		}
+	}
+
+	// isNotLastDay
+	return ReadingSchedule{
+		StartOrdinalVerse: startReadingAt,
+		EndOrdinalVerse:   startReadingAt + verseCountPerDay,
+		TotalVerseCount:   (startReadingAt + verseCountPerDay) - startReadingAt,
+	}
+}
+
+// // We dont care about days in the month
+// func GetOldTestamentDailyRange(currentDayofYear int, excludedBooks []string) ReadingSchedule {
+// 	var initialOTVerseCount int = VerseCountOldTestament
+
+// 	checkForExcludedBooks := false
+// 	// currently only allow proverbs and psalms to be excluded
+// 	if len(excludedBooks) > 0 {
+// 		checkForExcludedBooks = true
+// 		for _, a := range excludedBooks {
+// 			a = strings.ToUpper(a)
+// 			if !(a == "PSALMS" || a == "PROVERBS") {
+// 				fmt.Println("UH OH!! ", a)
+// 				return ReadingSchedule{}
+// 			}
+
+// 			// remove the verse count to get updated verseCountPerDay
+// 			switch a {
+// 			case "PROVERBS":
+// 				initialOTVerseCount = initialOTVerseCount - VerseCountProverbs
+// 			case "PSALMS":
+// 				initialOTVerseCount = initialOTVerseCount - VerseCountPsalms
+// 			}
+// 		}
+// 	}
+
+// 	verseCountPerDay := int(math.Ceil(float64(initialOTVerseCount / DaysInYear)))
+// 	fmt.Println("initialOTVersecount: ", initialOTVerseCount)
+// 	fmt.Println("verseCountPerDay: ", verseCountPerDay)
+
+// 	// Set beginning ordinal verse number for today
+// 	startReadingAt := 1
+// 	dayCounter := 1
+
+// 	for {
+// 		if dayCounter != currentDayofYear {
+// 			if checkForExcludedBooks {
+// 				for _, a := range excludedBooks {
+// 					a = strings.ToUpper(a)
+// 					if a == "PROVERBS" {
+// 						if startReadingAt >= ProverbsOrdinalStart || startReadingAt <= ProverbsOrdinalEnd {
+// 							startReadingAt += verseCountPerDay
+// 						}
+// 					}
+// 					if a == "PSALMS" {
+// 						if startReadingAt >= PsalmsOrdinalStart || startReadingAt <= PsalmsOrdinalEnd {
+// 							startReadingAt += verseCountPerDay
+// 						}
+// 					}
+// 				}
+// 			}
+// 			if dayCounter == currentDayofYear {
+// 				lastOrdinalVerseOT := startReadingAt + verseCountPerDay
+// 				return ReadingSchedule{
+// 					StartOrdinalVerse: startReadingAt,
+// 					EndOrdinalVerse:   lastOrdinalVerseOT,
+// 					TotalVerseCount:   lastOrdinalVerseOT - startReadingAt,
+// 				}
+// 			}
+
+// 			startReadingAt += verseCountPerDay
+// 			dayCounter++
+
+// 			fmt.Println("startReadingAt: ", startReadingAt)
+// 			fmt.Println("dayCounter: ", dayCounter)
+// 		}
+// 	}
+// }
+
+func GetOldTestamentDailyRange(currentDayofYear int, excludedBooks []string) ReadingSchedule {
+	verseCountPerDay := 63
+	// Set beginning ordinal verse number for today
+	startReadingAt := 1
+	for i := 1; i < currentDayofYear; i++ {
+		startReadingAt += verseCountPerDay
+	}
+
+	// Last Day
+	if DaysInYear == currentDayofYear {
+		lastOrdinalVerseOT := FirstOrdinalVerseNT - 1
+		return ReadingSchedule{
+			StartOrdinalVerse: startReadingAt,
+			EndOrdinalVerse:   lastOrdinalVerseOT,
+			TotalVerseCount:   lastOrdinalVerseOT - startReadingAt,
+		}
+	}
+
+	// isNotLastDay or FirstDay
+	return ReadingSchedule{
+		StartOrdinalVerse: startReadingAt,
+		EndOrdinalVerse:   startReadingAt + verseCountPerDay,
+		TotalVerseCount:   (startReadingAt + verseCountPerDay) - startReadingAt,
+	}
+}
+
+func GetNewTestamentDailyRange(currentDayofYear int) ReadingSchedule {
+
+	// verseCountPerDay := int(math.Ceil(float64(VerseCountNewTestament / DaysInYear)))
+
+	verseCountPerDay := 23
+	startReadingAt := FirstOrdinalVerseNT
+	for i := 1; i < currentDayofYear; i++ {
+		startReadingAt += verseCountPerDay
+	}
+
+	isLastDay := DaysInYear == currentDayofYear
+	if isLastDay {
+		return ReadingSchedule{
+			StartOrdinalVerse: startReadingAt,
+			EndOrdinalVerse:   FirstOrdinalVerseNT - 1,
+			TotalVerseCount:   (FirstOrdinalVerseNT - 1) - startReadingAt,
+		}
+	}
+
+	// isNotLastDay
+	return ReadingSchedule{
+		StartOrdinalVerse: startReadingAt,
+		EndOrdinalVerse:   startReadingAt + verseCountPerDay,
+		TotalVerseCount:   (startReadingAt + verseCountPerDay) - startReadingAt,
+	}
 }
