@@ -13,6 +13,9 @@
 	- [Supports verse ranges](https://bible.mintz5.com/bible/EPHESIANS/2/8-9)
 	- Search feature
 		- Example: `https://bible.mintz5.com/bible/search?q=heart`
+        - Yearly Reading schedule for Old Testament and New Testament for every day
+        - Monthly Reading schedule for Proverbs and Psalsm for every day
+
 
 To use public version of running API, visit the [bible_api](https://bible.mintz5.com/bible/list_books)
 ## TODO:
