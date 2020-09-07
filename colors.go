@@ -42,6 +42,7 @@ var (
 		"FloralWhite",
 		"LavenderBlush",
 		"MistyRose",
+		"DeepPink",
 	}
 )
 
