@@ -124,7 +124,7 @@ const (
     }
   </style>
   <body style="background-color:{{ .Color }};">
-    {{if .StartVerse}}<h1><center><a href={{.BookName}}>{{ .BookName }} {{ .Chapter }}</a>:{{.StartVerse}}-{{.EndVerse}}</h1>
+    {{if .StartVerse}}<h1><center><a href=../{{.Chapter}}>{{ .BookName }} {{ .Chapter }}</a>:{{.StartVerse}}-{{.EndVerse}}</h1>
     {{else}}
     <h1><center><a href="../{{.Chapter}}">{{ .BookName }} {{ .Chapter }}</a>:{{.SingleVerse}}
     {{end}}
