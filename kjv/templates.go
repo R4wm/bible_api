@@ -99,7 +99,7 @@ const (
 
 	versesTemplate = `
 <html>
-<title>{{.BookName}} {{.Chapter}}:{{.SingleVerse}}</title>
+<title>{{.HTMLTitle}}</title>
   <style>
     .btn-group button {
     background-color: gold; /* Green background */

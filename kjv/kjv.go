@@ -777,6 +777,7 @@ func (app *App) GetDailyNewTestament(w http.ResponseWriter, r *http.Request) {
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	var (
 		verses = struct {
+			HTMLTitle           string
 			BookName            string
 			Chapter             int
 			Verses              []map[int]string
@@ -864,6 +865,14 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 		log.Printf("Multi verse sql query: %s", stmt)
 
+		// create HTML Title
+		verses.HTMLTitle = fmt.Sprintf("%s %s:%s-%s",
+			requestVars["book"],
+			strconv.Itoa(rChapter),
+			verseRange[0],
+			verseRange[1],
+		)
+
 	} else {
 		// Single verse
 		rVerse, err := strconv.Atoi(requestVars["verse"])
@@ -883,6 +892,13 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		)
 
 		log.Printf("Single verse sql query: %s\n", stmt)
+
+		// create HTML Title
+		verses.HTMLTitle = fmt.Sprintf("%s %s:%s",
+			requestVars["book"],
+			strconv.Itoa(rChapter),
+			requestVars["verse"],
+		)
 	}
 
 	rows, err := app.Database.Query(stmt)
