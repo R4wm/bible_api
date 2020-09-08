@@ -363,10 +363,13 @@ func (app *App) getRandomVerseFromDB() (Verse, error) {
 func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	var matches struct {
-		Verses []Verse
-		Count  map[string]int
+		Verses       []Verse
+		SearchString string
+		Count        map[string]int
+		GraphCount   string // json array of ints
 	}
 
+	graphBookCounter := [66]int{}
 	var defaultSearchLimit = "10000"
 
 	// Handle text query
@@ -379,7 +382,6 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	// Handle limit size
 	searchLimit, ok := r.URL.Query()["n"]
-	fmt.Printf("searchLImit initial: %v\n", searchLimit)
 	if !ok || len(searchLimit) < 1 {
 		searchLimit = append(searchLimit, defaultSearchLimit)
 	}
@@ -392,7 +394,9 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := app.Database.Query("select book, chapter, verse, text from kjv where text like ? limit ?", "%"+searchText[0]+"%", limit)
+	matches.SearchString = searchText[0]
+
+	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where text like ? limit ?", "%"+searchText[0]+"%", limit)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -407,7 +411,8 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		match := Verse{}
-		err := rows.Scan(&match.Book, &match.Chapter, &match.Verse, &match.Text)
+		var ordinalBook int
+		err := rows.Scan(&match.Book, &match.Chapter, &match.Verse, &match.Text, &ordinalBook)
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/text")
@@ -426,6 +431,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		overallCount[match.Book] += 1
 		overallCount["overall"] += 1
 		matches.Verses = append(matches.Verses, match)
+		graphBookCounter[ordinalBook-1] += 1
 	}
 
 	matches.Count = overallCount
@@ -450,6 +456,14 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Failed to parse template..")
 		return
 	}
+
+	graphBytes, err := json.Marshal(graphBookCounter)
+	if err != nil {
+		log.Fatal("bad search json")
+	}
+
+	matches.GraphCount = string(graphBytes)
+
 	err = tmpl.Execute(w, matches)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
