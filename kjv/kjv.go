@@ -370,7 +370,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	graphBookCounter := [66]int{}
-	var defaultSearchLimit = "10000"
+	var defaultSearchLimit = "100000"
 
 	// Handle text query
 	searchText, ok := r.URL.Query()["q"]
