@@ -104,6 +104,7 @@ type Verse struct {
 }
 
 func (app *App) SetupRouter() {
+	app.Router.HandleFunc("/bible/menu", app.menu)
 	app.Router.HandleFunc("/bible/search", app.search)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
 	app.Router.HandleFunc("/bible/list_books/", app.listBooks)
@@ -465,6 +466,26 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	matches.GraphCount = string(graphBytes)
 
 	err = tmpl.Execute(w, matches)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/text")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to write to Writer"))
+		log.Println(err)
+		return
+	}
+
+}
+
+func (app *App) menu(w http.ResponseWriter, r *http.Request) {
+
+	tmpl, err := template.New("menu").Parse(menuTemplate)
+	if err != nil {
+		fmt.Println("Failed to parse template..")
+		return
+	}
+
+	nothing := "jaa"
+	err = tmpl.Execute(w, nothing)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)

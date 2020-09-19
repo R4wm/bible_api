@@ -1,6 +1,50 @@
 package kjv
 
 const (
+	menuTemplate = `
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KJV Bible API</title>
+    <link rel="stylesheet" href="https://stackedit.io/style.css" />
+  </head>
+
+  <body class="stackedit">
+    <div class="stackedit__html"><h1 id="welcome-to-the-kjv-bible-api">Welcome to the KJV Bible API</h1>
+      <p>There will never be any ads on this service.<br>
+        May God bless your reading.</p>
+      <hr>
+
+      <h2 id="the-books-of-the-bible">The Books of the Bible</h2>
+      <button onclick="location.href='https://bible.mintz5.com/bible/list_books'">The Books of the Bible</button>
+      <hr>
+
+      <h2 id="annual-reading">Annual Reading</h2>
+      <p>The following links will generate reading portions for the day.<br>
+        Restarts every new year.<br>
+        Old Testament<br></p>
+      <button onclick="location.href='./daily/ot'">The Old Testament</button>
+      <button onclick="location.href='./daily/nt'">The New Testament</button>
+
+      <h2 id="monthly-reading">Monthly Reading</h2>
+      <p>Each link will generate the reading portions for the day.<br>
+        Restarts every new month.<br></p>
+      <button onclick="location.href='./daily/proverbs'">Psalms</button>
+      <button onclick="location.href='./daily/psalms'">Proverbs</button>
+
+      <h2 id="random-verse">Random Verse</h2>
+      <p>A fun app to generate random verse from the Bible.<br>
+        Can be used in games or input for other applications.<br>
+        Provides json output with <code>?json=true</code><br></p>
+      <button onclick="location.href='./random_verse'">Random Verse</button>
+    </div>
+  </body>
+
+</html>
+`
 	booksButtonsTemplate = `
 <!DOCTYPE html>
 <html>
