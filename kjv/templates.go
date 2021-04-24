@@ -52,6 +52,7 @@ const (
 `
 	chapterTemplate = `
 <html>
+<title>{{.BookName}} {{ .Chapter}}</title>
 <style>
 .btn-group button {
   background-color: gold; /* Green background */
