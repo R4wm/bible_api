@@ -31,6 +31,7 @@ func main() {
 
 			log.Infof("Created database %v", path)
 		}
+		return
 	}
 
 	// Check the db path exists
