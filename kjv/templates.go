@@ -35,7 +35,7 @@ const (
 	verseTemplate = `
 <!DOCTYPE html>
 <html>
-  <body style="background-color:{{ .Color }};">
+  <body style="background-color:black;color;white;">
     <h1>
       <center>
 	<a href={{.ChapterRef}}>{{ .Verse.Book }} {{ .Verse.Chapter }}</a> : {{ .Verse.Verse }}
@@ -44,9 +44,11 @@ const (
     <h3>
       <center>{{ .Verse.Text }}</center>
     </h3>
-    <center>
-      <button onclick="window.location.href = '{{.ListAllBooksLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Books</button>
-    </center>
+<div class="container">
+  <div class="center">
+<button onclick="window.location.href = '{{.ListAllBooksLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Books</button>
+  </div>
+</div>
   </body>
 </html>
 `
@@ -61,6 +63,13 @@ const (
   padding: 10px 24px; /* Some padding */
   cursor: pointer; /* Pointer/hand icon */
   float: center; /* Float the buttons side by side */
+
+.center {
+  padding: 70px 0;
+  border: 3px solid green;
+  text-align: center;
+}
+
 }
 /* Clear floats (clearfix hack) */
 .btn-group:after {
@@ -76,24 +85,23 @@ const (
   background-color: #3e8e41;
 }
 </style>
-  <body style="background-color:{{ .Color }};">
+  <!-- <body style="background-color:black;color:white;"> -->
     <h1><center><a href=../{{.BookName}}>{{ .BookName }}</a> {{ .Chapter }}</h1>
-  <body>
+  <!-- <body> -->
     {{ range $index, $results := .Verses }}
     <p><b><left><a href={{ verseLink $index }}> {{ add $index 1}}</a> {{ . }} </b></p>
     {{ end }}
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-    <div class="w3-bar">
-    <div class="btn-group">
+    <div class="center">
     {{ if .PreviousChapterLink  }}
-    <button onclick="window.location.href = '{{.PreviousChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> < </button>
+    <a href='{{.PreviousChapterLink}}'>[Back] </a>
     {{ end }}
-    <button onclick="window.location.href = '{{.ListAllBooksLink}}';" class="w3-bar-item w3-button" style="width:33.3%">Books</button>
+   <a href='{{.ListAllBooksLink}}'>[Books Menu] </a>
     {{ if .NextChapterLink  }}
-    <button onclick="window.location.href = '{{.NextChapterLink}}';" class="w3-bar-item w3-button" style="width:33.3%"> > </button>
-    {{ end }}
-    </div>
+   <a href='{{.NextChapterLink}}'>[Next] </a>
+   {{ end }}
+   </div>
   </body>
 </html>
 `
@@ -124,7 +132,7 @@ const (
     background-color: #3e8e41;
     }
   </style>
-  <body style="background-color:{{ .Color }};">
+  <body style="background-color:black;color:white;">
     {{if .StartVerse}}<h1><center><a href=../{{.Chapter}}>{{ .BookName }} {{ .Chapter }}</a>:{{.StartVerse}}-{{.EndVerse}}</h1>
     {{else}}
     <h1><center><a href="../{{.Chapter}}">{{ .BookName }} {{ .Chapter }}</a>:{{.SingleVerse}}
