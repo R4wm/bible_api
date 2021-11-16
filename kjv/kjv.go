@@ -196,20 +196,93 @@ func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
+
+	var (
+		verses    = []Verse{}
+		vars      = mux.Vars(r)
+		bookFound bool
+	)
+	if vars["book"] != "" {
+		vars["book"] = strings.ToUpper(vars["book"])
+		//check the book actually exists
+		for book, _ := range BookChapterLimit {
+			if vars["book"] == book {
+				bookFound = true
+				break
+			}
+		}
+
+		// Book not found..
+		if !bookFound {
+			w.WriteHeader(http.StatusNotAcceptable)
+			msg := fmt.Sprintf("406 - %s does not exist", vars["book"])
+			w.Write([]byte(msg))
+			return
+		}
+	}
+	BookName := vars["book"]
+
+	chapter, err := strconv.Atoi(vars["chapter"])
+	if err != nil {
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte(fmt.Sprintf("%s is not a proper chapter", vars["chapter"])))
+		return
+	}
+	// check the chapter is not > last chapter for book
+	if chapter > BookChapterLimit[BookName] {
+		w.WriteHeader(http.StatusNotAcceptable)
+		msg := fmt.Sprintf("Chapter %d is out of bounds, last chapter of %s is %d\n", chapter, BookName, BookChapterLimit[BookName])
+		w.Write([]byte(msg))
+		return
+	}
+	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", BookName, chapter)
+	rows, err := app.Database.Query(stmt)
+	defer rows.Close()
+
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("400 - Could not query such a request: "))
+		return
+	}
+
+	var verse int
+	var text string
+	for rows.Next() {
+		rows.Scan(&verse, &text)
+		verses = append(verses, Verse{vars["book"], chapter, verse, text})
+	}
+	jsonizeResponse(verses, w, r)
+}
+
 // TODO this should return all verses for the book in json
 func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
 	r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
 
 	vars := mux.Vars(r)
-	var chapters struct {
-		BookName     string
-		ChapterCount int
-	}
-	chapters.BookName = strings.ToUpper(vars["book"])
-	chapters.ChapterCount = BookChapterLimit[chapters.BookName]
+	bookName := strings.ToUpper(vars["book"])
+	var book []Verse
 
-	jsonizeResponse(chapters, w, r)
-	return
+	if _, ok := BookChapterLimit[bookName]; !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("400 - No such book named: %s", bookName)))
+		return
+	}
+	stmt := fmt.Sprintf("select chapter, verse, text from kjv where book='%s'", bookName)
+	rows, err := app.Database.Query(stmt)
+	if err != nil {
+		log.Fatalf("Failed DB.Query(%s)\n", stmt)
+		return
+	}
+	var chapter int
+	var verse int
+	var text string
+	for rows.Next() {
+		rows.Scan(&chapter, &verse, &text)
+		book = append(book, Verse{vars["book"], chapter, verse, text})
+	}
+	jsonizeResponse(book, w, r)
 }
 
 // getRandomVerseFromDB gets the verse from db to pass to pretty print api.
@@ -339,66 +412,6 @@ func wantsJson(r *http.Request) bool {
 	}
 
 	return false
-}
-
-func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
-
-	var (
-		verses    = []Verse{}
-		vars      = mux.Vars(r)
-		bookFound bool
-	)
-	if vars["book"] != "" {
-		vars["book"] = strings.ToUpper(vars["book"])
-		//check the book actually exists
-		for book, _ := range BookChapterLimit {
-			if vars["book"] == book {
-				bookFound = true
-				break
-			}
-		}
-
-		// Book not found..
-		if !bookFound {
-			w.WriteHeader(http.StatusNotAcceptable)
-			msg := fmt.Sprintf("406 - %s does not exist", vars["book"])
-			w.Write([]byte(msg))
-			return
-		}
-	}
-	BookName := vars["book"]
-
-	chapter, err := strconv.Atoi(vars["chapter"])
-	if err != nil {
-		w.WriteHeader(http.StatusNotAcceptable)
-		w.Write([]byte(fmt.Sprintf("%s is not a proper chapter", vars["chapter"])))
-		return
-	}
-	// check the chapter is not > last chapter for book
-	if chapter > BookChapterLimit[BookName] {
-		w.WriteHeader(http.StatusNotAcceptable)
-		msg := fmt.Sprintf("Chapter %d is out of bounds, last chapter of %s is %d\n", chapter, BookName, BookChapterLimit[BookName])
-		w.Write([]byte(msg))
-		return
-	}
-	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", BookName, chapter)
-	rows, err := app.Database.Query(stmt)
-	defer rows.Close()
-
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("400 - Could not query such a request: "))
-		return
-	}
-
-	var verse int
-	var text string
-	for rows.Next() {
-		rows.Scan(&verse, &text)
-		verses = append(verses, Verse{vars["book"], chapter, verse, text})
-	}
-	jsonizeResponse(verses, w, r)
 }
 
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
