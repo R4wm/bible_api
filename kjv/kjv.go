@@ -106,7 +106,6 @@ type Verse struct {
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
-	app.Router.HandleFunc("/bible/list_books/", app.listBooks)
 	app.Router.HandleFunc("/bible/list_books", app.listBooks) // why do i have to be explicit about the post slash here..
 	app.Router.HandleFunc("/bible/daily/proverbs", app.GetDailyProverbs)
 	app.Router.HandleFunc("/bible/daily/psalms", app.GetDailyPsalms)
@@ -131,7 +130,8 @@ func (app *App) SetupRouter() {
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
-
+	r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
+	fmt.Println("removed slas")
 	books := []string{
 		"GENESIS",
 		"EXODUS",
@@ -228,6 +228,9 @@ func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("url: %s\n", r.URL.Path)
+	r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
+	fmt.Println("removed trailing suffix")
 	vars := mux.Vars(r)
 	var chapters struct {
 		Links []string
@@ -270,7 +273,7 @@ func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
 
 // ListChapters list the chapters of the book with clickable buttons for navigation
 func (app *App) listChapters(w http.ResponseWriter, r *http.Request) {
-
+	fmt.Println("list chapters")
 	vars := mux.Vars(r)
 
 	// check arg is not empty

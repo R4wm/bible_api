@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/r4wm/bible_api/kjv"
@@ -12,6 +13,13 @@ import (
 	"github.com/r4wm/sqlite3_kjv"
 	log "github.com/sirupsen/logrus"
 )
+
+func removeTrailingSlash(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
+		next.ServeHTTP(w, r)
+	})
+}
 
 func main() {
 
@@ -49,7 +57,7 @@ func main() {
 	}
 
 	log.Infof("Database connection OK.")
-
+	fmt.Println("something")
 	// Router
 	router := mux.NewRouter().StrictSlash(false)
 
@@ -63,5 +71,5 @@ func main() {
 	log.Infof("Listening on %s\n", port)
 
 	// Serve
-	log.Fatal(http.ListenAndServe(port, router))
+	log.Fatal(http.ListenAndServe(port, removeTrailingSlash(router)))
 }
