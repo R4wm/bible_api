@@ -15,7 +15,6 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	kjv "github.com/r4wm/bible_api"
 )
 
 const lastCardinalVerseNum = 31101
@@ -453,105 +452,9 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	jsonizeResponse(verses, w, r)
 }
 
-func (app *App) GetDailyProverbs(w http.ResponseWriter, r *http.Request) {
-
-	versesFromProverbs := []Verse{}
-
-	proverbsReading := GetProverbsDailyRange(GetDaysInMonth(), time.Now().Day())
-	fmt.Printf("%#v\n", proverbsReading)
-
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		log.Fatalf("Failed to query DAtabase")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromProverbs = append(versesFromProverbs, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromProverbs, w, r)
-	return
-}
-
-func (app *App) GetDailyPsalms(w http.ResponseWriter, r *http.Request) {
-
-	versesFromPsalms := []Verse{}
-
-	proverbsReading := GetPsalmsDailyRange(GetDaysInMonth(), time.Now().Day())
-	fmt.Printf("%#v\n", proverbsReading)
-
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		log.Fatalf("Failed to query DAtabase")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromPsalms = append(versesFromPsalms, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromPsalms, w, r)
-	return
-}
-
-func (app *App) GetDailyOldTestament(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Old Testament Daily Range")
-	versesFromOT := []Verse{}
-
-	t := time.Now()
-	OTReading := GetOldTestamentDailyRange(t.YearDay(), []string{})
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", OTReading.StartOrdinalVerse, OTReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-	rows, err := app.Database.Query(stmt)
-
-	if err != nil {
-		log.Fatalf("Failed to get verses for OT Reading")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromOT = append(versesFromOT, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromOT, w, r)
-	return
-
-}
-
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	var (
-		verses = struct {
-			HTMLTitle           string
-			BookName            string
-			Chapter             int
-			Verses              []map[int]string
-			Color               string
-			NextChapterLink     string
-			PreviousChapterLink string
-			ListAllBooksLink    string
-			StartVerse          int
-			EndVerse            int
-			SingleVerse         int
-		}{
-			Color:            kjv.GetRandomColor(),
-			ListAllBooksLink: "../../list_books?json=false",
-		}
+		verses      = []Verse{}
 		requestVars = mux.Vars(r)
 		bookFound   bool
 	)
@@ -565,7 +468,6 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
-
 		// Book not found..
 		if !bookFound {
 			w.WriteHeader(http.StatusNotAcceptable)
@@ -575,7 +477,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	verses.BookName = requestVars["book"]
+	bookName := requestVars["book"]
 
 	// Check Chapter
 	rChapter, err := strconv.Atoi(requestVars["chapter"])
@@ -584,8 +486,6 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
-
-	verses.Chapter = rChapter
 
 	// Check Verse
 	isVerseRange := strings.Contains(requestVars["verse"], "-")
@@ -596,14 +496,12 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		// Multiple Verse
 		log.Printf("Checking for valid range: %s", requestVars["verse"])
 		verseRange := strings.Split(requestVars["verse"], "-")
-
-		verses.StartVerse, err = strconv.Atoi(verseRange[0])
+		startVerse, err := strconv.Atoi(verseRange[0])
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Verse range start is not valid: %s", verseRange[0]), http.StatusBadRequest)
 			return
 		}
-
-		verses.EndVerse, err = strconv.Atoi(verseRange[1])
+		endVerse, err := strconv.Atoi(verseRange[1])
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Verse range end is not valid: %s", verseRange[1]), http.StatusBadRequest)
 			return
@@ -611,10 +509,10 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 		// Create the sqlverseRange
 		sqlVerseRange := ""
-		for i := verses.StartVerse; i < verses.EndVerse; i++ {
+		for i := startVerse; i < endVerse; i++ {
 			sqlVerseRange = sqlVerseRange + strconv.Itoa(i) + ","
 		}
-		sqlVerseRange = sqlVerseRange + strconv.Itoa(verses.EndVerse)
+		sqlVerseRange = sqlVerseRange + strconv.Itoa(endVerse)
 
 		log.Printf("sql verse range: %s", sqlVerseRange)
 
@@ -622,16 +520,6 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 			requestVars["book"],
 			strconv.Itoa(rChapter),
 			sqlVerseRange)
-
-		log.Printf("Multi verse sql query: %s", stmt)
-
-		// create HTML Title
-		verses.HTMLTitle = fmt.Sprintf("%s %s:%s-%s",
-			requestVars["book"],
-			strconv.Itoa(rChapter),
-			verseRange[0],
-			verseRange[1],
-		)
 
 	} else {
 		// Single verse
@@ -641,23 +529,11 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, msg, http.StatusBadRequest)
 			return
 		}
-
-		verses.SingleVerse = rVerse
-
 		// Query the database
 		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse=%s",
 			requestVars["book"],
 			strconv.Itoa(rChapter),
 			strconv.Itoa(rVerse),
-		)
-
-		log.Printf("Single verse sql query: %s\n", stmt)
-
-		// create HTML Title
-		verses.HTMLTitle = fmt.Sprintf("%s %s:%s",
-			requestVars["book"],
-			strconv.Itoa(rChapter),
-			requestVars["verse"],
 		)
 	}
 
@@ -673,22 +549,8 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		rows.Scan(&verseNum, &text)
-		verses.Verses = append(verses.Verses, map[int]string{verseNum: text})
+		verses = append(verses, Verse{bookName, rChapter, verseNum, text})
 	}
 
-	if wantsJson(r) {
-		jsonizeResponse(verses, w, r)
-		return
-	}
-
-	////////////////////////////
-	// Create Template	  //
-	////////////////////////////
-	t, err := template.New("chapter").Parse(versesTemplate)
-
-	if err != nil {
-		panic(err)
-	}
-
-	t.Execute(w, verses)
+	jsonizeResponse(verses, w, r)
 }
