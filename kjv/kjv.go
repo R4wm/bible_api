@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"net/http"
@@ -90,11 +89,13 @@ var (
 	}
 )
 
+// App router and stuff
 type App struct {
 	Router   *mux.Router
 	Database *sql.DB
 }
 
+// Verse verse structure
 type Verse struct {
 	Book    string `json:"Book"`
 	Chapter int    `json:"Chapter"`
@@ -102,6 +103,7 @@ type Verse struct {
 	Text    string `json:"Text"`
 }
 
+// SetupRouter where the fun happens
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
@@ -111,12 +113,10 @@ func (app *App) SetupRouter() {
 	s.HandleFunc("/{book}", app.getBook)
 	s.HandleFunc("/{book}/{chapter}", app.getChapter)
 	s.HandleFunc("/{book}/{chapter}/{verse}", app.getVerse)
-
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 	r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
-	fmt.Println("removed slas")
 	books := []string{
 		"GENESIS",
 		"EXODUS",
@@ -233,46 +233,35 @@ func (app *App) getRandomVerseFromDB() (Verse, error) {
 		rows.Scan(&randVerse.Book, &randVerse.Chapter, &randVerse.Verse, &randVerse.Text)
 	}
 
-	// OK
 	return randVerse, nil
 }
 
 func (app *App) search(w http.ResponseWriter, r *http.Request) {
-
 	var matches struct {
 		Verses       []Verse
 		SearchString string
 		Count        map[string]int
-		GraphCount   string // json array of ints
 	}
-
 	graphBookCounter := [66]int{}
 	var defaultSearchLimit = "100000"
-
 	// Handle text query
 	searchText, ok := r.URL.Query()["q"]
-	fmt.Printf("%v\n", searchText)
 	if !ok || len(searchText) < 1 {
 		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
 		return
 	}
-
 	// Handle limit size
 	searchLimit, ok := r.URL.Query()["n"]
 	if !ok || len(searchLimit) < 1 {
 		searchLimit = append(searchLimit, defaultSearchLimit)
 	}
-
 	limit, err := strconv.Atoi(searchLimit[0])
 	if err != nil {
-		fmt.Println("Whoopsi with the limit size.")
 		w.WriteHeader(http.StatusNotAcceptable)
 		w.Write([]byte("whoopsie with the limit size.."))
 		return
 	}
-
 	matches.SearchString = searchText[0]
-
 	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where text like ? limit ?", "%"+searchText[0]+"%", limit)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
@@ -298,58 +287,18 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(msg))
 			return
 		}
-
 		//////////////////////////////
 		// Count regex finds	    //
 		//////////////////////////////
 		foundCount := re.FindAll([]byte(match.Text), -1)
 		regexCount = regexCount + len(foundCount)
-
-		overallCount[match.Book] += 1
-		overallCount["overall"] += 1
+		overallCount[match.Book]++
+		overallCount["overall"]++
 		matches.Verses = append(matches.Verses, match)
-		graphBookCounter[ordinalBook-1] += 1
+		graphBookCounter[ordinalBook-1]++
 	}
-
 	matches.Count = overallCount
-	// Handle json request
-	if wantsJson(r) {
-		jsonizeResponse(matches, w, r)
-		return
-	}
-
-	// template func to create href
-	funcs := template.FuncMap{"createLink": func(a Verse) string {
-		return strings.Join([]string{
-			a.Book,
-			strconv.Itoa(a.Chapter),
-			strconv.Itoa(a.Verse),
-		},
-			"/")
-	}}
-
-	tmpl, err := template.New("results").Funcs(funcs).Parse(searchResultTemplate)
-	if err != nil {
-		fmt.Println("Failed to parse template..")
-		return
-	}
-
-	graphBytes, err := json.Marshal(graphBookCounter)
-	if err != nil {
-		log.Fatal("bad search json")
-	}
-
-	matches.GraphCount = string(graphBytes)
-
-	err = tmpl.Execute(w, matches)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to write to Writer"))
-		log.Println(err)
-		return
-	}
-
+	jsonizeResponse(matches, w, r)
 }
 
 func jsonizeResponse(obj interface{}, w http.ResponseWriter, r *http.Request) {

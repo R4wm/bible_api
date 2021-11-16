@@ -22,7 +22,6 @@ func removeTrailingSlash(next http.Handler) http.Handler {
 }
 
 func main() {
-
 	dbPath := flag.String("dbPath", "/tmp/kjv.db", "Path to kjv database.")
 	createDB := flag.Bool("createDB", false, "Create the kjv database.")
 	flag.Parse()
@@ -40,7 +39,6 @@ func main() {
 			log.Infof("Created database %v", path)
 		}
 	}
-
 	// Check the db path exists
 	_, err := os.Stat(*dbPath)
 	if os.IsNotExist(err) {
@@ -49,15 +47,12 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
-
 	// Create database connection
 	db, err := db.CreateDatabase(*dbPath)
 	if err != nil {
 		panic(err)
 	}
-
 	log.Infof("Database connection OK.")
-	fmt.Println("something")
 	// Router
 	router := mux.NewRouter().StrictSlash(false)
 
@@ -65,11 +60,9 @@ func main() {
 		Router:   router,
 		Database: db,
 	}
-
 	app.SetupRouter()
 	port := ":8000"
 	log.Infof("Listening on %s\n", port)
-
 	// Serve
 	log.Fatal(http.ListenAndServe(port, removeTrailingSlash(router)))
 }
