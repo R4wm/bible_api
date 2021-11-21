@@ -9,13 +9,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"net/http"
 
 	"github.com/gorilla/mux"
-	kjv "github.com/r4wm/bible_api"
 )
 
 const lastCardinalVerseNum = 31101
@@ -91,11 +89,13 @@ var (
 	}
 )
 
+// App router and stuff
 type App struct {
 	Router   *mux.Router
 	Database *sql.DB
 }
 
+// Verse verse structure
 type Verse struct {
 	Book    string `json:"Book"`
 	Chapter int    `json:"Chapter"`
@@ -103,35 +103,20 @@ type Verse struct {
 	Text    string `json:"Text"`
 }
 
+// SetupRouter where the fun happens
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
-	app.Router.HandleFunc("/bible/list_books/", app.listBooks)
 	app.Router.HandleFunc("/bible/list_books", app.listBooks) // why do i have to be explicit about the post slash here..
-	app.Router.HandleFunc("/bible/daily/proverbs", app.GetDailyProverbs)
-	app.Router.HandleFunc("/bible/daily/psalms", app.GetDailyPsalms)
-	app.Router.HandleFunc("/bible/daily/ot", app.GetDailyOldTestament)
-	app.Router.HandleFunc("/bible/daily/nt", app.GetDailyNewTestament)
-	// app.Router.HandleFunc("/bible/daily", app.getDaily)
-
-	t := app.Router.PathPrefix("/bible/list_chapters").Subrouter()
-	t.HandleFunc("/{book}", app.listChapters)
 
 	s := app.Router.PathPrefix("/bible").Subrouter()
 	s.HandleFunc("/{book}", app.getBook)
 	s.HandleFunc("/{book}/{chapter}", app.getChapter)
 	s.HandleFunc("/{book}/{chapter}/{verse}", app.getVerse)
-	// TODO: Make this clean , reusable based on book
-	s.HandleFunc("/daily/proverbs", app.GetDailyProverbs)
-	s.HandleFunc("/daily/psalms", app.GetDailyPsalms)
-	s.HandleFunc("/daily/ot", app.GetDailyOldTestament)
-	s.HandleFunc("/daily/nt", app.GetDailyNewTestament)
-	// s.HandleFunc("/daily", app.getDaily)
-
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
-
+	r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
 	books := []string{
 		"GENESIS",
 		"EXODUS",
@@ -200,82 +185,24 @@ func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 		"JUDE",
 		"REVELATION"}
 
-	// funcs generates the link needed for button
-	funcs := template.FuncMap{"createLink": func(b string) string {
-		return fmt.Sprintf("%s?json=false", b)
-	}}
-
-	t, err := template.New("listBooks").Funcs(funcs).Parse(booksButtonsTemplate)
-	if err != nil {
-		fmt.Printf("Could not list books: %s\n", err)
-	}
-
 	booksStruct := struct {
 		Books []string
-		Color string
 	}{
 		Books: books,
-		Color: kjv.GetRandomColor(),
 	}
 
 	// Return json response if requested
-	if wantsJson(r) {
-		jsonizeResponse(booksStruct, w, r)
-		return
-	}
-
-	t.Execute(w, booksStruct)
+	jsonizeResponse(booksStruct, w, r)
+	return
 }
 
-func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	var chapters struct {
-		Links []string
-		Name  string
-		Color string
-	}
-	chapters.Name = strings.ToUpper(vars["book"])
-	chapters.Color = kjv.GetRandomColor()
+func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
-	// Handle non existant book
-	chapterSize := BookChapterLimit[chapters.Name]
-	if chapterSize == 0 {
-		w.WriteHeader(http.StatusNotAcceptable)
-		msg := fmt.Sprintf("406 - %s does not exist", vars["book"])
-		w.Write([]byte(msg))
-		return
-	}
-
-	// Create the chapter list
-	for i := 1; i <= BookChapterLimit[chapters.Name]; i++ {
-		link := fmt.Sprintf("%s/%d", chapters.Name, i)
-		chapters.Links = append(chapters.Links, link)
-	}
-
-	// If json requested..
-	if wantsJson(r) {
-		jsonizeResponse(chapters, w, r)
-		return
-	}
-
-	// Define the template func for add
-	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
-	t, err := template.New("chapters").Funcs(funcs).Parse(chapterButtonsTemplate)
-	if err != nil {
-		panic(err)
-	}
-
-	t.Execute(w, chapters)
-}
-
-// ListChapters list the chapters of the book with clickable buttons for navigation
-func (app *App) listChapters(w http.ResponseWriter, r *http.Request) {
-
-	vars := mux.Vars(r)
-
-	// check arg is not empty
-	var bookFound bool
-
+	var (
+		verses    = []Verse{}
+		vars      = mux.Vars(r)
+		bookFound bool
+	)
 	if vars["book"] != "" {
 		vars["book"] = strings.ToUpper(vars["book"])
 		//check the book actually exists
@@ -293,46 +220,69 @@ func (app *App) listChapters(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(msg))
 			return
 		}
-
 	}
+	BookName := vars["book"]
 
-	chaptersMax := BookChapterLimit[strings.ToUpper(vars["book"])]
-
-	chapterInfo := struct {
-		Name     string
-		Chapters []int
-		Links    []string
-		Color    string
-	}{
-		Name:  strings.ToUpper(vars["book"]),
-		Color: kjv.GetRandomColor(),
-	}
-
-	// populate the data by interation
-	for i := 1; i <= chaptersMax; i++ {
-		chapterInfo.Chapters = append(chapterInfo.Chapters, i)
-		chapterInfo.Links = append(
-			chapterInfo.Links,
-			fmt.Sprintf("bible/%s/%s?json=false", chapterInfo.Name, strconv.Itoa(i)))
-	}
-
-	// Return json response if requested
-	if wantsJson(r) {
-		jsonizeResponse(chapterInfo, w, r)
-		return
-	}
-
-	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
-	t, err := template.New("chapterListing").Funcs(funcs).Parse(chapterButtonsTemplate)
+	chapter, err := strconv.Atoi(vars["chapter"])
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("500 - Could not parse chapterButtonsTemplate"))
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte(fmt.Sprintf("%s is not a proper chapter", vars["chapter"])))
 		return
-
 	}
-	fmt.Printf("%v\n", chapterInfo)
-	w.Header().Set("Content-Type", "text/html")
-	t.Execute(w, chapterInfo)
+	// check the chapter is not > last chapter for book
+	if chapter > BookChapterLimit[BookName] {
+		w.WriteHeader(http.StatusNotAcceptable)
+		msg := fmt.Sprintf("Chapter %d is out of bounds, last chapter of %s is %d\n", chapter, BookName, BookChapterLimit[BookName])
+		w.Write([]byte(msg))
+		return
+	}
+	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", BookName, chapter)
+	rows, err := app.Database.Query(stmt)
+	defer rows.Close()
+
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("400 - Could not query such a request: "))
+		return
+	}
+
+	var verse int
+	var text string
+	for rows.Next() {
+		rows.Scan(&verse, &text)
+		verses = append(verses, Verse{vars["book"], chapter, verse, text})
+	}
+	jsonizeResponse(verses, w, r)
+}
+
+// TODO this should return all verses for the book in json
+func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
+	r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
+
+	vars := mux.Vars(r)
+	bookName := strings.ToUpper(vars["book"])
+	var book []Verse
+
+	if _, ok := BookChapterLimit[bookName]; !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("400 - No such book named: %s", bookName)))
+		return
+	}
+	stmt := fmt.Sprintf("select chapter, verse, text from kjv where book='%s'", bookName)
+	rows, err := app.Database.Query(stmt)
+	if err != nil {
+		log.Fatalf("Failed DB.Query(%s)\n", stmt)
+		return
+	}
+	var chapter int
+	var verse int
+	var text string
+	for rows.Next() {
+		rows.Scan(&chapter, &verse, &text)
+		book = append(book, Verse{vars["book"], chapter, verse, text})
+	}
+	jsonizeResponse(book, w, r)
 }
 
 // getRandomVerseFromDB gets the verse from db to pass to pretty print api.
@@ -356,46 +306,35 @@ func (app *App) getRandomVerseFromDB() (Verse, error) {
 		rows.Scan(&randVerse.Book, &randVerse.Chapter, &randVerse.Verse, &randVerse.Text)
 	}
 
-	// OK
 	return randVerse, nil
 }
 
 func (app *App) search(w http.ResponseWriter, r *http.Request) {
-
 	var matches struct {
 		Verses       []Verse
 		SearchString string
 		Count        map[string]int
-		GraphCount   string // json array of ints
 	}
-
 	graphBookCounter := [66]int{}
 	var defaultSearchLimit = "100000"
-
 	// Handle text query
 	searchText, ok := r.URL.Query()["q"]
-	fmt.Printf("%v\n", searchText)
 	if !ok || len(searchText) < 1 {
 		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
 		return
 	}
-
 	// Handle limit size
 	searchLimit, ok := r.URL.Query()["n"]
 	if !ok || len(searchLimit) < 1 {
 		searchLimit = append(searchLimit, defaultSearchLimit)
 	}
-
 	limit, err := strconv.Atoi(searchLimit[0])
 	if err != nil {
-		fmt.Println("Whoopsi with the limit size.")
 		w.WriteHeader(http.StatusNotAcceptable)
 		w.Write([]byte("whoopsie with the limit size.."))
 		return
 	}
-
 	matches.SearchString = searchText[0]
-
 	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where text like ? limit ?", "%"+searchText[0]+"%", limit)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
@@ -421,58 +360,18 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(msg))
 			return
 		}
-
 		//////////////////////////////
 		// Count regex finds	    //
 		//////////////////////////////
 		foundCount := re.FindAll([]byte(match.Text), -1)
 		regexCount = regexCount + len(foundCount)
-
-		overallCount[match.Book] += 1
-		overallCount["overall"] += 1
+		overallCount[match.Book]++
+		overallCount["overall"]++
 		matches.Verses = append(matches.Verses, match)
-		graphBookCounter[ordinalBook-1] += 1
+		graphBookCounter[ordinalBook-1]++
 	}
-
 	matches.Count = overallCount
-	// Handle json request
-	if wantsJson(r) {
-		jsonizeResponse(matches, w, r)
-		return
-	}
-
-	// template func to create href
-	funcs := template.FuncMap{"createLink": func(a Verse) string {
-		return strings.Join([]string{
-			a.Book,
-			strconv.Itoa(a.Chapter),
-			strconv.Itoa(a.Verse),
-		},
-			"/")
-	}}
-
-	tmpl, err := template.New("results").Funcs(funcs).Parse(searchResultTemplate)
-	if err != nil {
-		fmt.Println("Failed to parse template..")
-		return
-	}
-
-	graphBytes, err := json.Marshal(graphBookCounter)
-	if err != nil {
-		log.Fatal("bad search json")
-	}
-
-	matches.GraphCount = string(graphBytes)
-
-	err = tmpl.Execute(w, matches)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to write to Writer"))
-		log.Println(err)
-		return
-	}
-
+	jsonizeResponse(matches, w, r)
 }
 
 func jsonizeResponse(obj interface{}, w http.ResponseWriter, r *http.Request) {
@@ -493,58 +392,16 @@ func jsonizeResponse(obj interface{}, w http.ResponseWriter, r *http.Request) {
 
 // getRandomVerse write pretty html page with random verse.
 func (app *App) getRandomVerse(w http.ResponseWriter, r *http.Request) {
-
 	result, err := app.getRandomVerseFromDB()
 	if err != nil {
-
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to get random verse from db."))
 		return
 	}
 
-	// create the data struct for template
-	returnPage := struct {
-		Verse      Verse
-		Color      string
-		ChapterRef string
-	}{
-		result,
-		kjv.GetRandomColor(),
-		"",
-	}
-
-	// Return json response if requested
-	if wantsJson(r) {
-		jsonizeResponse(result, w, r)
-		return
-	}
-
-	// TODO Move this to file and cache read 1 time and reuse..
-	tmpl, err := template.New("Basic").Parse(verseTemplate)
-
-	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to parse template"))
-		log.Println(err)
-		return
-	}
-
-	// Ok Serve it.
-	returnPage.ChapterRef = fmt.Sprintf("%s/%d?json=false",
-		result.Book,
-		result.Chapter,
-	)
-
-	err = tmpl.Execute(w, returnPage)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to write to Writer"))
-		log.Println(err)
-		return
-	}
+	jsonizeResponse(result, w, r)
+	return
 }
 
 func wantsJson(r *http.Request) bool {
@@ -557,255 +414,9 @@ func wantsJson(r *http.Request) bool {
 	return false
 }
 
-func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
-
-	var (
-		verses = struct {
-			BookName            string
-			Chapter             int
-			Verses              []string
-			Color               string
-			NextChapterLink     string
-			PreviousChapterLink string
-			ListAllBooksLink    string
-		}{
-			Color:            kjv.GetRandomColor(),
-			ListAllBooksLink: "../list_books?json=false",
-		}
-
-		vars = mux.Vars(r)
-
-		// check arg is not empty
-		bookFound bool
-	)
-
-	if vars["book"] != "" {
-		vars["book"] = strings.ToUpper(vars["book"])
-		//check the book actually exists
-		for book, _ := range BookChapterLimit {
-			if vars["book"] == book {
-				bookFound = true
-				break
-			}
-		}
-
-		// Book not found..
-		if !bookFound {
-			w.WriteHeader(http.StatusNotAcceptable)
-			msg := fmt.Sprintf("406 - %s does not exist", vars["book"])
-			w.Write([]byte(msg))
-			return
-		}
-
-	}
-
-	verses.BookName = vars["book"]
-
-	chapter, err := strconv.Atoi(vars["chapter"])
-	if err != nil {
-		w.WriteHeader(http.StatusNotAcceptable)
-		w.Write([]byte(fmt.Sprintf("%s is not a proper chapter", vars["chapter"])))
-		return
-	}
-
-	// check the chapter is not > last chapter for book
-	if chapter > BookChapterLimit[verses.BookName] {
-		w.WriteHeader(http.StatusNotAcceptable)
-		msg := fmt.Sprintf("Chapter %d is out of bounds, last chapter of %s is %d\n", chapter, verses.BookName, BookChapterLimit[verses.BookName])
-		w.Write([]byte(msg))
-		return
-	}
-
-	verses.Chapter = chapter
-
-	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", verses.BookName, verses.Chapter)
-
-	rows, err := app.Database.Query(stmt)
-	defer rows.Close()
-
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("400 - Could not query such a request: "))
-		return
-	}
-
-	var verse int
-	var text string
-
-	for rows.Next() {
-		rows.Scan(&verse, &text)
-		verses.Verses = append(verses.Verses, text)
-	}
-
-	// Add footer next chapter and previous chapter
-	if verses.Chapter <= 1 {
-		verses.PreviousChapterLink = ""
-	} else {
-		verses.PreviousChapterLink = fmt.Sprintf("%s?json=false", strconv.Itoa(verses.Chapter-1))
-	}
-
-	if verses.Chapter < BookChapterLimit[verses.BookName] {
-		// verses.NextChapterLink = fmt.Sprintf("get_chapter?book=%s&chapter=%s", verses.BookName, strconv.Itoa(verses.Chapter+1))
-		verses.NextChapterLink = fmt.Sprintf("%s?json=false", strconv.Itoa(verses.Chapter+1))
-	}
-
-	// Return json response if requested
-	if wantsJson(r) {
-		jsonizeResponse(verses, w, r)
-		return
-	}
-
-	//////////////////////////
-	// Template time        //
-	//////////////////////////
-	// add function to increment range indexing since it starts at 0 by default
-	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
-	verseLink := template.FuncMap{"verseLink": func(x int) string {
-
-		verseOffSet := strconv.Itoa(x + 1)
-
-		return fmt.Sprintf("%s/%s?json=false",
-			strconv.Itoa(verses.Chapter),
-			verseOffSet,
-		)
-	}}
-
-	t, err := template.New("chapter").Funcs(funcs).Funcs(verseLink).Parse(chapterTemplate)
-
-	if err != nil {
-		panic(err)
-	}
-
-	t.Execute(w, verses)
-}
-
-func (app *App) GetDailyProverbs(w http.ResponseWriter, r *http.Request) {
-
-	versesFromProverbs := []Verse{}
-
-	proverbsReading := GetProverbsDailyRange(GetDaysInMonth(), time.Now().Day())
-	fmt.Printf("%#v\n", proverbsReading)
-
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		log.Fatalf("Failed to query DAtabase")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromProverbs = append(versesFromProverbs, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromProverbs, w, r)
-	return
-}
-
-func (app *App) GetDailyPsalms(w http.ResponseWriter, r *http.Request) {
-
-	versesFromPsalms := []Verse{}
-
-	proverbsReading := GetPsalmsDailyRange(GetDaysInMonth(), time.Now().Day())
-	fmt.Printf("%#v\n", proverbsReading)
-
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		log.Fatalf("Failed to query DAtabase")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromPsalms = append(versesFromPsalms, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromPsalms, w, r)
-	return
-}
-
-func (app *App) GetDailyOldTestament(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Old Testament Daily Range")
-	versesFromOT := []Verse{}
-
-	t := time.Now()
-	OTReading := GetOldTestamentDailyRange(t.YearDay(), []string{})
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", OTReading.StartOrdinalVerse, OTReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-	rows, err := app.Database.Query(stmt)
-
-	if err != nil {
-		log.Fatalf("Failed to get verses for OT Reading")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromOT = append(versesFromOT, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromOT, w, r)
-	return
-
-}
-
-func (app *App) GetDailyNewTestament(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("New Testament Daily Range")
-	versesFromNT := []Verse{}
-
-	t := time.Now()
-	NTReading := GetNewTestamentDailyRange(t.YearDay())
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", NTReading.StartOrdinalVerse, NTReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-	rows, err := app.Database.Query(stmt)
-
-	if err != nil {
-		log.Fatalf("Failed to get verses for NT Reading")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromNT = append(versesFromNT, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromNT, w, r)
-	return
-
-}
-
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	var (
-		verses = struct {
-			HTMLTitle           string
-			BookName            string
-			Chapter             int
-			Verses              []map[int]string
-			Color               string
-			NextChapterLink     string
-			PreviousChapterLink string
-			ListAllBooksLink    string
-			StartVerse          int
-			EndVerse            int
-			SingleVerse         int
-		}{
-			Color:            kjv.GetRandomColor(),
-			ListAllBooksLink: "../../list_books?json=false",
-		}
+		verses      = []Verse{}
 		requestVars = mux.Vars(r)
 		bookFound   bool
 	)
@@ -819,7 +430,6 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
-
 		// Book not found..
 		if !bookFound {
 			w.WriteHeader(http.StatusNotAcceptable)
@@ -829,7 +439,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	verses.BookName = requestVars["book"]
+	bookName := requestVars["book"]
 
 	// Check Chapter
 	rChapter, err := strconv.Atoi(requestVars["chapter"])
@@ -838,8 +448,6 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
-
-	verses.Chapter = rChapter
 
 	// Check Verse
 	isVerseRange := strings.Contains(requestVars["verse"], "-")
@@ -850,14 +458,12 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		// Multiple Verse
 		log.Printf("Checking for valid range: %s", requestVars["verse"])
 		verseRange := strings.Split(requestVars["verse"], "-")
-
-		verses.StartVerse, err = strconv.Atoi(verseRange[0])
+		startVerse, err := strconv.Atoi(verseRange[0])
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Verse range start is not valid: %s", verseRange[0]), http.StatusBadRequest)
 			return
 		}
-
-		verses.EndVerse, err = strconv.Atoi(verseRange[1])
+		endVerse, err := strconv.Atoi(verseRange[1])
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Verse range end is not valid: %s", verseRange[1]), http.StatusBadRequest)
 			return
@@ -865,10 +471,10 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 		// Create the sqlverseRange
 		sqlVerseRange := ""
-		for i := verses.StartVerse; i < verses.EndVerse; i++ {
+		for i := startVerse; i < endVerse; i++ {
 			sqlVerseRange = sqlVerseRange + strconv.Itoa(i) + ","
 		}
-		sqlVerseRange = sqlVerseRange + strconv.Itoa(verses.EndVerse)
+		sqlVerseRange = sqlVerseRange + strconv.Itoa(endVerse)
 
 		log.Printf("sql verse range: %s", sqlVerseRange)
 
@@ -876,16 +482,6 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 			requestVars["book"],
 			strconv.Itoa(rChapter),
 			sqlVerseRange)
-
-		log.Printf("Multi verse sql query: %s", stmt)
-
-		// create HTML Title
-		verses.HTMLTitle = fmt.Sprintf("%s %s:%s-%s",
-			requestVars["book"],
-			strconv.Itoa(rChapter),
-			verseRange[0],
-			verseRange[1],
-		)
 
 	} else {
 		// Single verse
@@ -895,23 +491,11 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, msg, http.StatusBadRequest)
 			return
 		}
-
-		verses.SingleVerse = rVerse
-
 		// Query the database
 		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse=%s",
 			requestVars["book"],
 			strconv.Itoa(rChapter),
 			strconv.Itoa(rVerse),
-		)
-
-		log.Printf("Single verse sql query: %s\n", stmt)
-
-		// create HTML Title
-		verses.HTMLTitle = fmt.Sprintf("%s %s:%s",
-			requestVars["book"],
-			strconv.Itoa(rChapter),
-			requestVars["verse"],
 		)
 	}
 
@@ -927,22 +511,8 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		rows.Scan(&verseNum, &text)
-		verses.Verses = append(verses.Verses, map[int]string{verseNum: text})
+		verses = append(verses, Verse{bookName, rChapter, verseNum, text})
 	}
 
-	if wantsJson(r) {
-		jsonizeResponse(verses, w, r)
-		return
-	}
-
-	////////////////////////////
-	// Create Template	  //
-	////////////////////////////
-	t, err := template.New("chapter").Parse(versesTemplate)
-
-	if err != nil {
-		panic(err)
-	}
-
-	t.Execute(w, verses)
+	jsonizeResponse(verses, w, r)
 }

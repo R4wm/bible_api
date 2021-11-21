@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/r4wm/bible_api/kjv"
@@ -13,8 +14,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func main() {
+func removeTrailingSlash(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
+		next.ServeHTTP(w, r)
+	})
+}
 
+func main() {
 	dbPath := flag.String("dbPath", "/tmp/kjv.db", "Path to kjv database.")
 	createDB := flag.Bool("createDB", false, "Create the kjv database.")
 	flag.Parse()
@@ -32,7 +39,6 @@ func main() {
 			log.Infof("Created database %v", path)
 		}
 	}
-
 	// Check the db path exists
 	_, err := os.Stat(*dbPath)
 	if os.IsNotExist(err) {
@@ -41,15 +47,12 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
-
 	// Create database connection
 	db, err := db.CreateDatabase(*dbPath)
 	if err != nil {
 		panic(err)
 	}
-
 	log.Infof("Database connection OK.")
-
 	// Router
 	router := mux.NewRouter().StrictSlash(false)
 
@@ -57,11 +60,9 @@ func main() {
 		Router:   router,
 		Database: db,
 	}
-
 	app.SetupRouter()
 	port := ":8000"
 	log.Infof("Listening on %s\n", port)
-
 	// Serve
-	log.Fatal(http.ListenAndServe(port, router))
+	log.Fatal(http.ListenAndServe(port, removeTrailingSlash(router)))
 }
