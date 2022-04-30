@@ -328,12 +328,19 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	if !ok || len(searchLimit) < 1 {
 		searchLimit = append(searchLimit, defaultSearchLimit)
 	}
+
 	limit, err := strconv.Atoi(searchLimit[0])
 	if err != nil {
 		w.WriteHeader(http.StatusNotAcceptable)
 		w.Write([]byte("whoopsie with the limit size.."))
 		return
 	}
+	if searchText[0] == "" {
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte("No"))
+		return
+	}
+
 	matches.SearchString = searchText[0]
 	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where text like ? limit ?", "%"+searchText[0]+"%", limit)
 	if err != nil {
