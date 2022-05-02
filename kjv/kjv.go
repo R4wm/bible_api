@@ -316,33 +316,20 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		Count        map[string]int
 	}
 	graphBookCounter := [66]int{}
-	var defaultSearchLimit = "100000"
 	// Handle text query
-	searchText, ok := r.URL.Query()["q"]
-	if !ok || len(searchText) < 1 {
+	matches.SearchString = r.URL.Query().Get("q")
+	if matches.SearchString == "" {
+		w.WriteHeader(400)
 		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
 		return
 	}
 	// Handle limit size
-	searchLimit, ok := r.URL.Query()["n"]
-	if !ok || len(searchLimit) < 1 {
-		searchLimit = append(searchLimit, defaultSearchLimit)
-	}
-
-	limit, err := strconv.Atoi(searchLimit[0])
+	searchLimit, err := strconv.Atoi(r.URL.Query().Get("n"))
 	if err != nil {
-		w.WriteHeader(http.StatusNotAcceptable)
-		w.Write([]byte("whoopsie with the limit size.."))
-		return
+		log.Println("setting searchlimit to default 1000")
+		searchLimit = 1000
 	}
-	if searchText[0] == "" {
-		w.WriteHeader(http.StatusNotAcceptable)
-		w.Write([]byte("No"))
-		return
-	}
-
-	matches.SearchString = searchText[0]
-	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where text like ? limit ?", "%"+searchText[0]+"%", limit)
+	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where text like ? limit ?", "%"+matches.SearchString+"%", searchLimit)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -353,13 +340,12 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	regexCount := 0
 	overallCount := make(map[string]int)
-	re := regexp.MustCompile("(?i)" + searchText[0])
+	re := regexp.MustCompile("(?i)" + matches.SearchString)
 
 	for rows.Next() {
 		match := Verse{}
 		var ordinalBook int
 		err := rows.Scan(&match.Book, &match.Chapter, &match.Verse, &match.Text, &ordinalBook)
-
 		if err != nil {
 			w.Header().Set("Content-Type", "application/text")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -382,7 +368,6 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 }
 
 func jsonizeResponse(obj interface{}, w http.ResponseWriter, r *http.Request) {
-
 	jsonResult, err := json.MarshalIndent(obj, "  ", "")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
@@ -392,6 +377,7 @@ func jsonizeResponse(obj interface{}, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(jsonResult)
 	return
 
