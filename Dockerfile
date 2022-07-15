@@ -10,3 +10,5 @@ RUN tar -C /usr/local -xzf /tmp/go1.18.4.linux-amd64.tar.gz
 ENV PATH=$PATH:/usr/local/go/bin
 
 RUN go version
+RUN go build -o ~/bible_api cmd/deploy.go
+ENTRYPOINT ["./docker/entry.sh"]
