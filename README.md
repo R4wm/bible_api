@@ -25,7 +25,7 @@ To use public version of running API, visit the [bible_api](https://mintz5.duckd
 
 0 @fake:[~/github/bible_api]:$ docker image ls  | tail -2 
 ubuntu                                                             20.04          20fffa419e3a   5 weeks ago          72.8MB
-registry.gitlab.edgecastcdn.net/edgecast/common/base/18.04         4.7.10         899f3ea4a1f6   4 months ago         471MB
+
 0 @fake:[~/github/bible_api]:$ docker run -it -d -p 8000:8000 --name something_c bf306415b1f5
 303d470aac6f9c375e29d1c4073ab633a88752bef56ab02fd0fe8e025bb30cd4
 0 @fake:[~/github/bible_api]:$ 
