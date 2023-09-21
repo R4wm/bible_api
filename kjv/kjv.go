@@ -574,32 +574,44 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 		}
 
 		vars = mux.Vars(r)
-
-		// check arg is not empty
-		bookFound bool
 	)
+
+	book := strings.ToUpper(vars["book"])
+	var possibleBooks []string
+	for bookCandidate, _ := range BookChapterLimit {
+		if strings.HasPrefix(bookCandidate, book) {
+			possibleBooks = append(possibleBooks, bookCandidate)
+		}
+	}
+
+	var possibleChoices []string
+	// Allow short name of book to be used
+	//   search all the books, if it starts with same name, use it
 
 	if vars["book"] != "" {
 		vars["book"] = strings.ToUpper(vars["book"])
-		//check the book actually exists
-		for book, _ := range BookChapterLimit {
-			if vars["book"] == book {
-				bookFound = true
-				break
+		for bookCandidate, _ := range BookChapterLimit {
+			if strings.HasPrefix(bookCandidate, vars["book"]) {
+				possibleChoices = append(possibleChoices, bookCandidate)
 			}
 		}
 
-		// Book not found..
-		if !bookFound {
-			w.WriteHeader(http.StatusNotAcceptable)
-			msg := fmt.Sprintf("406 - %s does not exist", vars["book"])
-			w.Write([]byte(msg))
-			return
-		}
-
+	}
+	if len(possibleChoices) == 0 {
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte("book not found for " + vars["book"]))
+		return
 	}
 
-	verses.BookName = vars["book"]
+	if len(possibleChoices) > 1 {
+		errMsg := fmt.Sprintf("multiple books found: need to make a hyper link for each book.. : %s", possibleChoices)
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte(errMsg))
+		return
+	}
+	if len(possibleChoices) == 1 {
+		verses.BookName = possibleChoices[0]
+	}
 
 	chapter, err := strconv.Atoi(vars["chapter"])
 	if err != nil {
