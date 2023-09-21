@@ -407,6 +407,250 @@ func wantsJson(r *http.Request) bool {
 	return false
 }
 
+func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
+
+	var (
+		verses = struct {
+			BookName            string
+			Chapter             int
+			Verses              []string
+			Color               string
+			NextChapterLink     string
+			PreviousChapterLink string
+			ListAllBooksLink    string
+		}{
+			Color:            kjv.GetRandomColor(),
+			ListAllBooksLink: "../list_books?json=false",
+		}
+
+		vars = mux.Vars(r)
+	)
+
+	book := strings.ToUpper(vars["book"])
+	var possibleBooks []string
+	for bookCandidate, _ := range BookChapterLimit {
+		if strings.HasPrefix(bookCandidate, book) {
+			possibleBooks = append(possibleBooks, bookCandidate)
+		}
+	}
+
+	var possibleChoices []string
+	// Allow short name of book to be used
+	//   search all the books, if it starts with same name, use it
+
+	if vars["book"] != "" {
+		vars["book"] = strings.ToUpper(vars["book"])
+		for bookCandidate, _ := range BookChapterLimit {
+			if strings.HasPrefix(bookCandidate, vars["book"]) {
+				possibleChoices = append(possibleChoices, bookCandidate)
+			}
+		}
+
+	}
+	if len(possibleChoices) == 0 {
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte("book not found for " + vars["book"]))
+		return
+	}
+
+	if len(possibleChoices) > 1 {
+		errMsg := fmt.Sprintf("multiple books found: need to make a hyper link for each book.. : %s", possibleChoices)
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte(errMsg))
+		return
+	}
+	if len(possibleChoices) == 1 {
+		verses.BookName = possibleChoices[0]
+	}
+
+	chapter, err := strconv.Atoi(vars["chapter"])
+	if err != nil {
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte(fmt.Sprintf("%s is not a proper chapter", vars["chapter"])))
+		return
+	}
+
+	// check the chapter is not > last chapter for book
+	if chapter > BookChapterLimit[verses.BookName] {
+		w.WriteHeader(http.StatusNotAcceptable)
+		msg := fmt.Sprintf("Chapter %d is out of bounds, last chapter of %s is %d\n", chapter, verses.BookName, BookChapterLimit[verses.BookName])
+		w.Write([]byte(msg))
+		return
+	}
+
+	verses.Chapter = chapter
+
+	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", verses.BookName, verses.Chapter)
+
+	rows, err := app.Database.Query(stmt)
+	defer rows.Close()
+
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("400 - Could not query such a request: "))
+		return
+	}
+
+	var verse int
+	var text string
+
+	for rows.Next() {
+		rows.Scan(&verse, &text)
+		verses.Verses = append(verses.Verses, text)
+	}
+
+	// Add footer next chapter and previous chapter
+	if verses.Chapter <= 1 {
+		verses.PreviousChapterLink = ""
+	} else {
+		verses.PreviousChapterLink = fmt.Sprintf("%s?json=false", strconv.Itoa(verses.Chapter-1))
+	}
+
+	if verses.Chapter < BookChapterLimit[verses.BookName] {
+		// verses.NextChapterLink = fmt.Sprintf("get_chapter?book=%s&chapter=%s", verses.BookName, strconv.Itoa(verses.Chapter+1))
+		verses.NextChapterLink = fmt.Sprintf("%s?json=false", strconv.Itoa(verses.Chapter+1))
+	}
+
+	// Return json response if requested
+	if wantsJson(r) {
+		jsonizeResponse(verses, w, r)
+		return
+	}
+
+	//////////////////////////
+	// Template time        //
+	//////////////////////////
+	// add function to increment range indexing since it starts at 0 by default
+	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
+	verseLink := template.FuncMap{"verseLink": func(x int) string {
+
+		verseOffSet := strconv.Itoa(x + 1)
+
+		return fmt.Sprintf("%s/%s?json=false",
+			strconv.Itoa(verses.Chapter),
+			verseOffSet,
+		)
+	}}
+
+	t, err := template.New("chapter").Funcs(funcs).Funcs(verseLink).Parse(chapterTemplate)
+
+	if err != nil {
+		panic(err)
+	}
+
+	t.Execute(w, verses)
+}
+
+func (app *App) GetDailyProverbs(w http.ResponseWriter, r *http.Request) {
+
+	versesFromProverbs := []Verse{}
+
+	proverbsReading := GetProverbsDailyRange(GetDaysInMonth(), time.Now().Day())
+	fmt.Printf("%#v\n", proverbsReading)
+
+	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
+	fmt.Println(stmt)
+
+	rows, err := app.Database.Query(stmt)
+	if err != nil {
+		log.Fatalf("Failed to query DAtabase")
+	}
+
+	for rows.Next() {
+		v := Verse{}
+		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
+		// fmt.Printf("%#v\n", v)
+		versesFromProverbs = append(versesFromProverbs, v)
+	}
+
+	// TODO: Render HTML response , just JSON for now cause time
+	jsonizeResponse(versesFromProverbs, w, r)
+	return
+}
+
+func (app *App) GetDailyPsalms(w http.ResponseWriter, r *http.Request) {
+
+	versesFromPsalms := []Verse{}
+
+	proverbsReading := GetPsalmsDailyRange(GetDaysInMonth(), time.Now().Day())
+	fmt.Printf("%#v\n", proverbsReading)
+
+	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
+	fmt.Println(stmt)
+
+	rows, err := app.Database.Query(stmt)
+	if err != nil {
+		log.Fatalf("Failed to query DAtabase")
+	}
+
+	for rows.Next() {
+		v := Verse{}
+		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
+		// fmt.Printf("%#v\n", v)
+		versesFromPsalms = append(versesFromPsalms, v)
+	}
+
+	// TODO: Render HTML response , just JSON for now cause time
+	jsonizeResponse(versesFromPsalms, w, r)
+	return
+}
+
+func (app *App) GetDailyOldTestament(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Old Testament Daily Range")
+	versesFromOT := []Verse{}
+
+	t := time.Now()
+	OTReading := GetOldTestamentDailyRange(t.YearDay(), []string{})
+	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", OTReading.StartOrdinalVerse, OTReading.EndOrdinalVerse)
+	fmt.Println(stmt)
+	rows, err := app.Database.Query(stmt)
+
+	if err != nil {
+		log.Fatalf("Failed to get verses for OT Reading")
+	}
+
+	for rows.Next() {
+		v := Verse{}
+		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
+		// fmt.Printf("%#v\n", v)
+		versesFromOT = append(versesFromOT, v)
+	}
+
+	// TODO: Render HTML response , just JSON for now cause time
+	jsonizeResponse(versesFromOT, w, r)
+	return
+
+}
+
+func (app *App) GetDailyNewTestament(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("New Testament Daily Range")
+	versesFromNT := []Verse{}
+
+	t := time.Now()
+	NTReading := GetNewTestamentDailyRange(t.YearDay())
+	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", NTReading.StartOrdinalVerse, NTReading.EndOrdinalVerse)
+	fmt.Println(stmt)
+	rows, err := app.Database.Query(stmt)
+
+	if err != nil {
+		log.Fatalf("Failed to get verses for NT Reading")
+	}
+
+	for rows.Next() {
+		v := Verse{}
+		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
+		// fmt.Printf("%#v\n", v)
+		versesFromNT = append(versesFromNT, v)
+	}
+
+	// TODO: Render HTML response , just JSON for now cause time
+	jsonizeResponse(versesFromNT, w, r)
+	return
+
+}
+
+
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	var (
 		verses      = []Verse{}
