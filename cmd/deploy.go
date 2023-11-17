@@ -37,8 +37,11 @@ func main() {
 			}
 
 			log.Infof("Created database %v", path)
+			return // dont run it else docker image build will never finish
 		}
 	}
+
+	// We didnt create a database, lets go
 	// Check the db path exists
 	_, err := os.Stat(*dbPath)
 	if os.IsNotExist(err) {
@@ -55,7 +58,6 @@ func main() {
 	log.Infof("Database connection OK.")
 	// Router
 	router := mux.NewRouter().StrictSlash(false)
-
 	app := kjv.App{
 		Router:   router,
 		Database: db,
