@@ -3,6 +3,7 @@ package kjv
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -557,6 +558,34 @@ func wantsJson(r *http.Request) bool {
 	return false
 }
 
+// lazyBook only adds book to string if pattern is met
+func lazyBook(shortName string) (book string, err error) {
+	// TODO: write simple test
+	shortName = strings.ToUpper(shortName)
+	var possibleBooks []string
+
+	// iterate the BookList and add if pattern meets
+	for bookCandidate, _ := range BookChapterLimit {
+		// fmt.Println("this is candidate: ", bookCandidate)
+		// TODO CHange to regex /
+		if strings.HasPrefix(bookCandidate, shortName) {
+			// fmt.Println("Found : ", bookCandidate)
+			possibleBooks = append(possibleBooks, bookCandidate)
+		}
+	}
+
+	if len(possibleBooks) > 1 {
+		errMsg := fmt.Sprintf("more than one possible choice: %s", possibleBooks)
+		err = errors.New(errMsg)
+		return "", err
+	} else {
+		book = possibleBooks[0]
+		return book, nil
+	}
+
+	return book, err
+}
+
 func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
 	var (
@@ -822,10 +851,17 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	)
 
 	//check the book actually exists
-	if requestVars["book"] != "" {
-		requestVars["book"] = strings.ToUpper(requestVars["book"])
+	bookName, err := lazyBook(requestVars["book"])
+	if err != nil {
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte(fmt.Sprintf("%s", err)))
+		return
+	}
+
+	if bookName != "" {
+		bookName = strings.ToUpper(bookName)
 		for book, _ := range BookChapterLimit {
-			if requestVars["book"] == book {
+			if bookName == book {
 				bookFound = true
 				break
 			}
@@ -834,13 +870,13 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		// Book not found..
 		if !bookFound {
 			w.WriteHeader(http.StatusNotAcceptable)
-			msg := fmt.Sprintf("406 - %s does not exist", requestVars["book"])
+			msg := fmt.Sprintf("406 - %s does not exist", bookName)
 			w.Write([]byte(msg))
 			return
 		}
 	}
 
-	verses.BookName = requestVars["book"]
+	verses.BookName = bookName
 
 	// Check Chapter
 	rChapter, err := strconv.Atoi(requestVars["chapter"])
@@ -884,7 +920,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		log.Printf("sql verse range: %s", sqlVerseRange)
 
 		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse in (%s)\n",
-			requestVars["book"],
+			bookName,
 			strconv.Itoa(rChapter),
 			sqlVerseRange)
 
@@ -892,7 +928,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 		// create HTML Title
 		verses.HTMLTitle = fmt.Sprintf("%s %s:%s-%s",
-			requestVars["book"],
+			bookName,
 			strconv.Itoa(rChapter),
 			verseRange[0],
 			verseRange[1],
@@ -911,7 +947,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 		// Query the database
 		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse=%s",
-			requestVars["book"],
+			bookName,
 			strconv.Itoa(rChapter),
 			strconv.Itoa(rVerse),
 		)
@@ -920,7 +956,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 		// create HTML Title
 		verses.HTMLTitle = fmt.Sprintf("%s %s:%s",
-			requestVars["book"],
+			bookName,
 			strconv.Itoa(rChapter),
 			requestVars["verse"],
 		)
