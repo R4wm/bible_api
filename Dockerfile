@@ -14,7 +14,7 @@ COPY . /go/src/bible_api
 ENV CGO_ENABLED=1
 ENV GOOS=linux
 
-RUN go build -o /bible_api ./cmd/deploy.go
+RUN go build -o /bible_api ./cmd/bible_api.go
 RUN /bible_api -createDB
 
 ################
