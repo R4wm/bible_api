@@ -587,7 +587,6 @@ func lazyBook(shortName string) (book string, err error) {
 }
 
 func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
-
 	var (
 		verses = struct {
 			BookName            string
@@ -606,41 +605,13 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	)
 
 	book := strings.ToUpper(vars["book"])
-	var possibleBooks []string
-	for bookCandidate, _ := range BookChapterLimit {
-		if strings.HasPrefix(bookCandidate, book) {
-			possibleBooks = append(possibleBooks, bookCandidate)
-		}
-	}
-
-	var possibleChoices []string
-	// Allow short name of book to be used
-	//   search all the books, if it starts with same name, use it
-
-	if vars["book"] != "" {
-		vars["book"] = strings.ToUpper(vars["book"])
-		for bookCandidate, _ := range BookChapterLimit {
-			if strings.HasPrefix(bookCandidate, vars["book"]) {
-				possibleChoices = append(possibleChoices, bookCandidate)
-			}
-		}
-
-	}
-	if len(possibleChoices) == 0 {
+	bookName, err := lazyBook(book)
+	if err != nil {
 		w.WriteHeader(http.StatusNotAcceptable)
-		w.Write([]byte("book not found for " + vars["book"]))
+		w.Write([]byte(fmt.Sprintf("%s", err)))
 		return
 	}
-
-	if len(possibleChoices) > 1 {
-		errMsg := fmt.Sprintf("multiple books found: need to make a hyper link for each book.. : %s", possibleChoices)
-		w.WriteHeader(http.StatusNotAcceptable)
-		w.Write([]byte(errMsg))
-		return
-	}
-	if len(possibleChoices) == 1 {
-		verses.BookName = possibleChoices[0]
-	}
+	verses.BookName = bookName
 
 	chapter, err := strconv.Atoi(vars["chapter"])
 	if err != nil {
