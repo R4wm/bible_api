@@ -1,0 +1,12 @@
+[Unit]
+Description=bible api
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=rmintz
+ExecStart=/usr/bin/bible_api -dbPath /etc/bible_api/data/kjv.db
+
+[Install]
+WantedBy=multi-user.target
