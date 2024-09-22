@@ -98,3 +98,8 @@ $
 
 ```
 
+
+# TODO
+reveal whole chapter
+floating search bar
+
