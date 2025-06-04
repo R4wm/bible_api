@@ -104,6 +104,10 @@ type Verse struct {
 	Text    string `json:"Text"`
 }
 
+func (v *Verse) RemoveItalicMarkers() {
+	v.Text = strings.ReplaceAll(v.Text, "[", "")
+	v.Text = strings.ReplaceAll(v.Text, "]", "")
+}
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
@@ -322,6 +326,12 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
 		return
 	}
+	// Check for special characters in search string and return error if found
+	if matched, _ := regexp.MatchString(`[^\w\s]`, searchText[0]); matched {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Search string contains special characters which are not allowed"))
+		return
+	}
 
 	// Handle limit size
 	searchLimit, ok := r.URL.Query()["n"]
@@ -337,9 +347,15 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if show_italics parameter is present and set to true
+	showItalics := false
+	if italicsParam := r.URL.Query().Get("show_italics"); italicsParam == "true" {
+		showItalics = true
+	}
+
 	matches.SearchString = searchText[0]
 
-	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where text like ? limit ?", "%"+searchText[0]+"%", limit)
+	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where replace(replace(text, '[', ''), ']', '') like ? limit ?", "%"+searchText[0]+"%", limit)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -356,6 +372,10 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		match := Verse{}
 		var ordinalBook int
 		err := rows.Scan(&match.Book, &match.Chapter, &match.Verse, &match.Text, &ordinalBook)
+
+		if !showItalics {
+			match.RemoveItalicMarkers()
+		}
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/text")
