@@ -132,74 +132,11 @@ func (app *App) SetupRouter() {
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
-
-	books := []string{
-		"GENESIS",
-		"EXODUS",
-		"LEVITICUS",
-		"NUMBERS",
-		"DEUTERONOMY",
-		"JOSHUA",
-		"JUDGES",
-		"RUTH",
-		"1SAMUEL",
-		"2SAMUEL",
-		"1KINGS",
-		"2KINGS",
-		"1CHRONICLES",
-		"2CHRONICLES",
-		"EZRA",
-		"NEHEMIAH",
-		"ESTHER",
-		"JOB",
-		"PSALMS",
-		"PROVERBS",
-		"ECCLESIASTES",
-		"SONG OF SOLOMON",
-		"ISAIAH",
-		"JEREMIAH",
-		"LAMENTATIONS",
-		"EZEKIEL",
-		"DANIEL",
-		"HOSEA",
-		"JOEL",
-		"AMOS",
-		"OBADIAH",
-		"JONAH",
-		"MICAH",
-		"NAHUM",
-		"HABAKKUK",
-		"ZEPHANIAH",
-		"HAGGAI",
-		"ZECHARIAH",
-		"MALACHI",
-		"MATTHEW",
-		"MARK",
-		"LUKE",
-		"JOHN",
-		"ACTS",
-		"ROMANS",
-		"1CORINTHIANS",
-		"2CORINTHIANS",
-		"GALATIANS",
-		"EPHESIANS",
-		"PHILIPPIANS",
-		"COLOSSIANS",
-		"1THESSALONIANS",
-		"2THESSALONIANS",
-		"1TIMOTHY",
-		"2TIMOTHY",
-		"TITUS",
-		"PHILEMON",
-		"HEBREWS",
-		"JAMES",
-		"1PETER",
-		"2PETER",
-		"1JOHN",
-		"2JOHN",
-		"3JOHN",
-		"JUDE",
-		"REVELATION"}
+	// Extract books from BookChapterLimit map to maintain consistency
+	books := make([]string, 0, len(BookChapterLimit))
+	for book := range BookChapterLimit {
+		books = append(books, book)
+	}
 
 	// funcs generates the link needed for button
 	funcs := template.FuncMap{"createLink": func(b string) string {
@@ -208,7 +145,9 @@ func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 
 	t, err := template.New("listBooks").Funcs(funcs).Parse(booksButtonsTemplate)
 	if err != nil {
-		fmt.Printf("Could not list books: %s\n", err)
+		http.Error(w, "Could not parse template", http.StatusInternalServerError)
+		log.Printf("Template parsing error: %v", err)
+		return
 	}
 
 	booksStruct := struct {
@@ -221,11 +160,14 @@ func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 
 	// Return json response if requested
 	if wantsJson(r) {
-		jsonizeResponse(booksStruct, w, r)
+		jsonizeResponse(booksStruct, w)
 		return
 	}
 
-	t.Execute(w, booksStruct)
+	if err := t.Execute(w, booksStruct); err != nil {
+		http.Error(w, "Could not execute template", http.StatusInternalServerError)
+		log.Printf("Template execution error: %v", err)
+	}
 }
 
 func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +197,7 @@ func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
 
 	// If json requested..
 	if wantsJson(r) {
-		jsonizeResponse(chapters, w, r)
+		jsonizeResponse(chapters, w)
 		return
 	}
 
@@ -280,7 +222,7 @@ func (app *App) listChapters(w http.ResponseWriter, r *http.Request) {
 	if vars["book"] != "" {
 		vars["book"] = strings.ToUpper(vars["book"])
 		//check the book actually exists
-		for book, _ := range BookChapterLimit {
+		for book := range BookChapterLimit {
 			if vars["book"] == book {
 				bookFound = true
 				break
@@ -319,7 +261,7 @@ func (app *App) listChapters(w http.ResponseWriter, r *http.Request) {
 
 	// Return json response if requested
 	if wantsJson(r) {
-		jsonizeResponse(chapterInfo, w, r)
+		jsonizeResponse(chapterInfo, w)
 		return
 	}
 
@@ -438,7 +380,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	matches.Count = overallCount
 	// Handle json request
 	if wantsJson(r) {
-		jsonizeResponse(matches, w, r)
+		jsonizeResponse(matches, w)
 		return
 	}
 
@@ -454,42 +396,38 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, err := template.New("results").Funcs(funcs).Parse(searchResultTemplate)
 	if err != nil {
-		fmt.Println("Failed to parse template..")
+		http.Error(w, "Failed to parse search template", http.StatusInternalServerError)
+		log.Printf("Template parsing error: %v", err)
 		return
 	}
 
 	graphBytes, err := json.Marshal(graphBookCounter)
 	if err != nil {
-		log.Fatal("bad search json")
+		http.Error(w, "Failed to marshal graph data", http.StatusInternalServerError)
+		log.Printf("JSON marshaling error: %v", err)
+		return
 	}
 
 	matches.GraphCount = string(graphBytes)
 
 	err = tmpl.Execute(w, matches)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to write to Writer"))
-		log.Println(err)
+		http.Error(w, "Failed to execute search template", http.StatusInternalServerError)
+		log.Printf("Template execution error: %v", err)
 		return
 	}
 
 }
 
-func jsonizeResponse(obj interface{}, w http.ResponseWriter, r *http.Request) {
-
+func jsonizeResponse(obj interface{}, w http.ResponseWriter) {
 	jsonResult, err := json.MarshalIndent(obj, "  ", "")
 	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to marshal json from result"))
-		log.Println(err)
+		http.Error(w, "Failed to marshal JSON response", http.StatusInternalServerError)
+		log.Printf("JSON marshaling error: %v", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonResult)
-	return
-
 }
 
 // getRandomVerse write pretty html page with random verse.
@@ -517,7 +455,7 @@ func (app *App) getRandomVerse(w http.ResponseWriter, r *http.Request) {
 
 	// Return json response if requested
 	if wantsJson(r) {
-		jsonizeResponse(result, w, r)
+		jsonizeResponse(result, w)
 		return
 	}
 
@@ -565,7 +503,7 @@ func lazyBook(shortName string) (book string, err error) {
 	var possibleBooks []string
 
 	// iterate the BookList and add if pattern meets
-	for bookCandidate, _ := range BookChapterLimit {
+	for bookCandidate := range BookChapterLimit {
 		// fmt.Println("this is candidate: ", bookCandidate)
 		// TODO CHange to regex /
 		if strings.HasPrefix(bookCandidate, shortName) {
@@ -578,12 +516,12 @@ func lazyBook(shortName string) (book string, err error) {
 		errMsg := fmt.Sprintf("more than one possible choice: %s", possibleBooks)
 		err = errors.New(errMsg)
 		return "", err
-	} else {
+	} else if len(possibleBooks) == 1 {
 		book = possibleBooks[0]
 		return book, nil
 	}
 
-	return book, err
+	return "", errors.New("no matching book found")
 }
 
 func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
@@ -633,14 +571,13 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", verses.BookName, verses.Chapter)
 
 	rows, err := app.Database.Query(stmt)
-	defer rows.Close()
-
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("400 - Could not query such a request: "))
 		return
 	}
+	defer rows.Close()
 
 	var verse int
 	var text string
@@ -664,7 +601,7 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
 	// Return json response if requested
 	if wantsJson(r) {
-		jsonizeResponse(verses, w, r)
+		jsonizeResponse(verses, w)
 		return
 	}
 
@@ -714,8 +651,7 @@ func (app *App) GetDailyProverbs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromProverbs, w, r)
-	return
+	jsonizeResponse(versesFromProverbs, w)
 }
 
 func (app *App) GetDailyPsalms(w http.ResponseWriter, r *http.Request) {
@@ -741,8 +677,7 @@ func (app *App) GetDailyPsalms(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromPsalms, w, r)
-	return
+	jsonizeResponse(versesFromPsalms, w)
 }
 
 func (app *App) GetDailyOldTestament(w http.ResponseWriter, r *http.Request) {
@@ -767,8 +702,7 @@ func (app *App) GetDailyOldTestament(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromOT, w, r)
-	return
+	jsonizeResponse(versesFromOT, w)
 
 }
 
@@ -794,8 +728,7 @@ func (app *App) GetDailyNewTestament(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromNT, w, r)
-	return
+	jsonizeResponse(versesFromNT, w)
 
 }
 
@@ -831,7 +764,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 	if bookName != "" {
 		bookName = strings.ToUpper(bookName)
-		for book, _ := range BookChapterLimit {
+		for book := range BookChapterLimit {
 			if bookName == book {
 				bookFound = true
 				break
@@ -877,7 +810,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 		verses.EndVerse, err = strconv.Atoi(verseRange[1])
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Verse range end is not valid: %s", verseRange[1]), http.StatusBadRequest)
+			http.Error(w, "Verse range end is not valid: "+verseRange[1], http.StatusBadRequest)
 			return
 		}
 
@@ -935,7 +868,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := app.Database.Query(stmt)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Could not query DB"), http.StatusInternalServerError)
+		http.Error(w, "Could not query DB", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -949,7 +882,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if wantsJson(r) {
-		jsonizeResponse(verses, w, r)
+		jsonizeResponse(verses, w)
 		return
 	}
 
