@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -22,6 +23,8 @@ func removeTrailingSlash(next http.Handler) http.Handler {
 }
 
 func main() {
+
+	debug.PrintStack()
 	dbPath := flag.String("dbPath", "/tmp/kjv.db", "Path to kjv database.")
 	createDB := flag.Bool("createDB", false, "Create the kjv database.")
 	flag.Parse()

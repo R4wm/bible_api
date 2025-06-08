@@ -15,5 +15,6 @@
 
 # Ignore certain binaries
 deploy
+kjv.db
 
 *#
