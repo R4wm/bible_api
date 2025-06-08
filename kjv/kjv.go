@@ -161,9 +161,6 @@ func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 		Books: books,
 		Color: kjv.GetRandomColor(),
 	}
-	fmt.Println(">>> This is a test ")
-	a := 1
-	_ = a
 
 	// Return json response if requested
 	if wantsJson(r) {
