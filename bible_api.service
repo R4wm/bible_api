@@ -1,0 +1,13 @@
+[Unit]
+Description=Bible API Service
+After=network.target
+
+[Service]
+Type=simple
+User=bibleapi
+WorkingDirectory=/usr/local/bin
+ExecStart=/usr/local/bin/bible_api
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
