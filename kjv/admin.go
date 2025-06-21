@@ -2,6 +2,7 @@ package kjv
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -93,9 +94,12 @@ func (app *App) blockIP(w http.ResponseWriter, r *http.Request) {
 
 	rateLimiter := middleware.NewRateLimiter(app.Redis)
 	if err := rateLimiter.BlockIP(req.IP, duration); err != nil {
+		log.Printf("Admin: Failed to block IP %s for duration %v: %v", req.IP, duration, err)
 		http.Error(w, "Failed to block IP", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("Admin: Manually blocked IP %s for duration %v", req.IP, duration)
 
 	response := map[string]interface{}{
 		"message":  "IP blocked successfully",
@@ -118,9 +122,12 @@ func (app *App) unblockIP(w http.ResponseWriter, r *http.Request) {
 
 	rateLimiter := middleware.NewRateLimiter(app.Redis)
 	if err := rateLimiter.UnblockIP(ip); err != nil {
+		log.Printf("Admin: Failed to unblock IP %s: %v", ip, err)
 		http.Error(w, "Failed to unblock IP", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("Admin: Manually unblocked IP %s", ip)
 
 	response := map[string]interface{}{
 		"message": "IP unblocked successfully",
