@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -58,6 +59,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 		blockedKey := fmt.Sprintf("blocked:%s", clientIP)
 		blocked, err := rl.client.Get(ctx, blockedKey).Result()
 		if err != redis.Nil && blocked != "" {
+			log.Printf("Rate limiter: Blocked IP %s attempted access (still blocked)", clientIP)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
 			w.Write([]byte(`{"error": "Rate limit exceeded. IP blocked for 1 minute.", "retry_after": 60}`))
@@ -75,7 +77,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 		if err != nil {
 			// If Redis is down, allow the request but log the error
-			fmt.Printf("Redis error: %v\n", err)
+			log.Printf("Rate limiter: Redis error for IP %s: %v", clientIP, err)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -84,10 +86,13 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 		// Check if limit exceeded
 		if requests > int64(rl.limit) {
+			// Log the rate limit violation and blocking
+			log.Printf("Rate limiter: IP %s exceeded limit (%d requests), blocking for %v", clientIP, requests, rl.blockTTL)
+
 			// Block the IP for the specified duration
 			err = rl.client.Set(ctx, blockedKey, "1", rl.blockTTL).Err()
 			if err != nil {
-				fmt.Printf("Error setting block key: %v\n", err)
+				log.Printf("Rate limiter: Error setting block key for IP %s: %v", clientIP, err)
 			}
 
 			// Set rate limit headers
@@ -104,6 +109,11 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 		remaining := rl.limit - int(requests)
 		if remaining < 0 {
 			remaining = 0
+		}
+
+		// Log warning when approaching rate limit
+		if remaining <= 1 && requests > 1 {
+			log.Printf("Rate limiter: IP %s approaching limit (%d/%d requests used)", clientIP, requests, rl.limit)
 		}
 
 		w.Header().Set("X-RateLimit-Limit", strconv.Itoa(rl.limit))
