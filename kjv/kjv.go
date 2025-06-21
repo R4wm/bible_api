@@ -15,6 +15,7 @@ import (
 
 	"net/http"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/mux"
 	kjv "github.com/r4wm/bible_api"
 )
@@ -95,6 +96,7 @@ var (
 type App struct {
 	Router   *mux.Router
 	Database *sql.DB
+	Redis    *redis.Client
 }
 
 type Verse struct {
@@ -133,6 +135,8 @@ func (app *App) SetupRouter() {
 	s.HandleFunc("/daily/nt", app.GetDailyNewTestament)
 	// s.HandleFunc("/daily", app.getDaily)
 
+	// Setup admin routes for rate limit management
+	app.SetupAdminRoutes()
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
@@ -545,6 +549,7 @@ func lazyBook(shortName string) (book string, err error) {
 }
 
 func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("calling getChapter\n")
 	var (
 		verses = struct {
 			BookName            string
@@ -561,6 +566,13 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
 		vars = mux.Vars(r)
 	)
+
+	// Check if show_italics parameter is present and set to true
+	showItalics := false
+	if italicsParam := r.URL.Query().Get("show_italics"); italicsParam == "true" {
+		showItalics = true
+	}
+	fmt.Printf("show italics: is %v\n", showItalics)
 
 	book := strings.ToUpper(vars["book"])
 	bookName, err := lazyBook(book)
@@ -604,6 +616,10 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		rows.Scan(&verse, &text)
+		if !showItalics {
+			text = strings.ReplaceAll(text, "[", "")
+			text = strings.ReplaceAll(text, "]", "")
+		}
 		verses.Verses = append(verses.Verses, text)
 	}
 

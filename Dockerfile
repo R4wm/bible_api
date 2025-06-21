@@ -23,6 +23,11 @@ RUN /bible_api -createDB
 # FROM scratch
 WORKDIR /
 EXPOSE 8000
+
+# Set default Redis connection to the linked Redis container
+ENV REDIS_ADDR=redis:6379
+ENV REDIS_PASSWORD=
+
 # COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # COPY --from=build /go/src/bible_api/data/kjv.db /kjv.db
 # COPY --from=build /go/src/bible_api /bible_api
