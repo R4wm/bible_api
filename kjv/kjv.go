@@ -139,10 +139,21 @@ func (app *App) SetupRouter() {
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
-	// Extract books from BookChapterLimit map to maintain consistency
-	books := make([]string, 0, len(BookChapterLimit))
-	for book := range BookChapterLimit {
-		books = append(books, book)
+	// Maintain proper biblical order instead of random map iteration
+	books := []string{
+		"GENESIS", "EXODUS", "LEVITICUS", "NUMBERS", "DEUTERONOMY",
+		"JOSHUA", "JUDGES", "RUTH", "1SAMUEL", "2SAMUEL",
+		"1KINGS", "2KINGS", "1CHRONICLES", "2CHRONICLES", "EZRA",
+		"NEHEMIAH", "ESTHER", "JOB", "PSALMS", "PROVERBS",
+		"ECCLESIASTES", "SONG OF SOLOMON", "ISAIAH", "JEREMIAH", "LAMENTATIONS",
+		"EZEKIEL", "DANIEL", "HOSEA", "JOEL", "AMOS",
+		"OBADIAH", "JONAH", "MICAH", "NAHUM", "HABAKKUK",
+		"ZEPHANIAH", "HAGGAI", "ZECHARIAH", "MALACHI", "MATTHEW",
+		"MARK", "LUKE", "JOHN", "ACTS", "ROMANS",
+		"1CORINTHIANS", "2CORINTHIANS", "GALATIANS", "EPHESIANS", "PHILIPPIANS",
+		"COLOSSIANS", "1THESSALONIANS", "2THESSALONIANS", "1TIMOTHY", "2TIMOTHY",
+		"TITUS", "PHILEMON", "HEBREWS", "JAMES", "1PETER",
+		"2PETER", "1JOHN", "2JOHN", "3JOHN", "JUDE", "REVELATION",
 	}
 
 	// funcs generates the link needed for button
@@ -329,15 +340,16 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	graphBookCounter := [66]int{}
-	var defaultSearchLimit = "100000"
+	var defaultSearchLimit = "10000"
 
 	// Handle text query
 	searchText, ok := r.URL.Query()["q"]
-	log.Debugf("Search query: %s", searchText[0])
 	if !ok || len(searchText) < 1 {
-		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
+		// Show search form instead of biblical quote
+		app.showSearchForm(w, r)
 		return
 	}
+	log.Debugf("Search query: %s", searchText[0])
 	// Validate search string - allow only alphanumeric, spaces, and common punctuation
 	if matched, _ := regexp.MatchString(`[^\w\s'".,;:!?()-]`, searchText[0]); matched {
 		w.WriteHeader(http.StatusBadRequest)
@@ -354,13 +366,16 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	// Handle limit size
 	searchLimit, ok := r.URL.Query()["n"]
+	var limitStr string
 	if !ok || len(searchLimit) < 1 {
-		searchLimit = append(searchLimit, defaultSearchLimit)
+		limitStr = defaultSearchLimit
+	} else {
+		limitStr = searchLimit[0]
 	}
 
-	limit, err := strconv.Atoi(searchLimit[0])
+	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit < 1 || limit > 10000 {
-		log.Warnf("Invalid search limit provided: %s", searchLimit[0])
+		log.Warnf("Invalid search limit provided: %s", limitStr)
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Search limit must be a number between 1 and 10000"))
 		return
@@ -684,6 +699,38 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
 	if err := t.Execute(w, verses); err != nil {
 		http.Error(w, "Could not execute template", http.StatusInternalServerError)
+		log.Printf("Template execution error: %v", err)
+	}
+}
+
+func (app *App) showSearchForm(w http.ResponseWriter, r *http.Request) {
+	// Check if JSON is requested
+	if wantsJson(r) {
+		response := map[string]string{
+			"message": "Please provide a search query parameter 'q'",
+			"example": "/bible/search?q=love",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		jsonizeResponse(response, w)
+		return
+	}
+
+	// Show HTML search form
+	searchFormData := struct {
+		Color string
+	}{
+		Color: kjv.GetRandomColor(),
+	}
+
+	tmpl, err := template.New("searchForm").Parse(searchFormTemplate)
+	if err != nil {
+		http.Error(w, "Could not parse search form template", http.StatusInternalServerError)
+		log.Printf("Template parsing error: %v", err)
+		return
+	}
+
+	if err := tmpl.Execute(w, searchFormData); err != nil {
+		http.Error(w, "Could not execute search form template", http.StatusInternalServerError)
 		log.Printf("Template execution error: %v", err)
 	}
 }
