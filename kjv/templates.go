@@ -501,6 +501,45 @@ const (
                 justify-content: center;
             }
         }
+        
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-top: none;
+            border-radius: 0 0 15px 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .autocomplete-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background-color 0.2s ease;
+        }
+        
+        .autocomplete-item:hover,
+        .autocomplete-item.selected {
+            background-color: #f8fafc;
+            color: #4f46e5;
+        }
+        
+        .autocomplete-item:last-child {
+            border-bottom: none;
+        }
+        
+        .search-input-container {
+            position: relative;
+            flex: 1;
+            min-width: 200px;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 </head>
@@ -517,7 +556,10 @@ const (
         
         <div class="search-form">
             <form method="GET" action="/bible/search" style="display: flex; gap: 15px; flex: 1; align-items: center; flex-wrap: wrap;">
-                <input type="text" name="q" class="search-input" placeholder="Search the Bible..." value="{{.SearchString}}" required>
+                <div class="search-input-container">
+                    <input type="text" name="q" id="search-input-results" class="search-input" placeholder="Search the Bible..." value="{{.SearchString}}" required autocomplete="off">
+                    <div id="autocomplete-dropdown-results" class="autocomplete-dropdown"></div>
+                </div>
                 <button type="submit" class="search-button">🔍 Search</button>
             </form>
             <div class="nav-section">
@@ -637,6 +679,109 @@ const (
         });
     </script>
     {{end}}
+    
+    <script>
+        function initAutocomplete(inputId, dropdownId) {
+            const input = document.getElementById(inputId);
+            const dropdown = document.getElementById(dropdownId);
+            let selectedIndex = -1;
+            let suggestions = [];
+            let debounceTimer = null;
+
+            function fetchSuggestions(query) {
+                if (query.length < 2) {
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                fetch('/bible/autocomplete?q=' + encodeURIComponent(query))
+                    .then(response => response.json())
+                    .then(data => {
+                        suggestions = data || [];
+                        displaySuggestions();
+                    })
+                    .catch(error => {
+                        console.error('Autocomplete error:', error);
+                        dropdown.style.display = 'none';
+                    });
+            }
+
+            function displaySuggestions() {
+                if (suggestions.length === 0) {
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                dropdown.innerHTML = '';
+                suggestions.forEach((suggestion, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'autocomplete-item';
+                    item.textContent = suggestion;
+                    item.addEventListener('click', () => {
+                        input.value = suggestion;
+                        dropdown.style.display = 'none';
+                        input.form.submit();
+                    });
+                    dropdown.appendChild(item);
+                });
+
+                dropdown.style.display = 'block';
+                selectedIndex = -1;
+            }
+
+            function selectItem(index) {
+                const items = dropdown.querySelectorAll('.autocomplete-item');
+                items.forEach(item => item.classList.remove('selected'));
+                
+                if (index >= 0 && index < items.length) {
+                    items[index].classList.add('selected');
+                    selectedIndex = index;
+                }
+            }
+
+            input.addEventListener('input', function() {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    fetchSuggestions(this.value.trim());
+                }, 300);
+            });
+
+            input.addEventListener('keydown', function(e) {
+                const items = dropdown.querySelectorAll('.autocomplete-item');
+                
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (selectedIndex < items.length - 1) {
+                        selectItem(selectedIndex + 1);
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (selectedIndex > 0) {
+                        selectItem(selectedIndex - 1);
+                    }
+                } else if (e.key === 'Enter' && selectedIndex >= 0) {
+                    e.preventDefault();
+                    input.value = suggestions[selectedIndex];
+                    dropdown.style.display = 'none';
+                    this.form.submit();
+                } else if (e.key === 'Escape') {
+                    dropdown.style.display = 'none';
+                    selectedIndex = -1;
+                }
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
+        }
+
+        // Initialize autocomplete for the search results form
+        document.addEventListener('DOMContentLoaded', function() {
+            initAutocomplete('search-input-results', 'autocomplete-dropdown-results');
+        });
+    </script>
 </body>
 </html>
 `
@@ -796,6 +941,45 @@ const (
             transform: translateY(-1px);
         }
         
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-top: none;
+            border-radius: 0 0 15px 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .autocomplete-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background-color 0.2s ease;
+        }
+        
+        .autocomplete-item:hover,
+        .autocomplete-item.selected {
+            background-color: #f8fafc;
+            color: #4f46e5;
+        }
+        
+        .autocomplete-item:last-child {
+            border-bottom: none;
+        }
+        
+        .search-input-container {
+            position: relative;
+            flex: 1;
+            min-width: 200px;
+        }
+        
         @media (max-width: 768px) {
             .container {
                 padding: 30px;
@@ -823,14 +1007,19 @@ const (
         <p class="subtitle">Find verses, stories, and wisdom from God's Word</p>
         
         <form class="search-form" method="GET" action="/bible/search">
-            <input 
-                type="text" 
-                name="q" 
-                class="search-input" 
-                placeholder="Enter words, phrases, or topics..." 
-                required
-                autofocus
-            >
+            <div class="search-input-container">
+                <input 
+                    type="text" 
+                    name="q" 
+                    id="search-input-main"
+                    class="search-input" 
+                    placeholder="Enter words, phrases, or topics..." 
+                    required
+                    autofocus
+                    autocomplete="off"
+                >
+                <div id="autocomplete-dropdown-main" class="autocomplete-dropdown"></div>
+            </div>
             <button type="submit" class="search-button">🔍 Search Scripture</button>
         </form>
         
@@ -853,6 +1042,109 @@ const (
             <a href="/bible/random_verse" class="nav-button">🎲 Random Verse</a>
         </div>
     </div>
+
+    <script>
+        function initAutocomplete(inputId, dropdownId) {
+            const input = document.getElementById(inputId);
+            const dropdown = document.getElementById(dropdownId);
+            let selectedIndex = -1;
+            let suggestions = [];
+            let debounceTimer = null;
+
+            function fetchSuggestions(query) {
+                if (query.length < 2) {
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                fetch('/bible/autocomplete?q=' + encodeURIComponent(query))
+                    .then(response => response.json())
+                    .then(data => {
+                        suggestions = data || [];
+                        displaySuggestions();
+                    })
+                    .catch(error => {
+                        console.error('Autocomplete error:', error);
+                        dropdown.style.display = 'none';
+                    });
+            }
+
+            function displaySuggestions() {
+                if (suggestions.length === 0) {
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                dropdown.innerHTML = '';
+                suggestions.forEach((suggestion, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'autocomplete-item';
+                    item.textContent = suggestion;
+                    item.addEventListener('click', () => {
+                        input.value = suggestion;
+                        dropdown.style.display = 'none';
+                        input.form.submit();
+                    });
+                    dropdown.appendChild(item);
+                });
+
+                dropdown.style.display = 'block';
+                selectedIndex = -1;
+            }
+
+            function selectItem(index) {
+                const items = dropdown.querySelectorAll('.autocomplete-item');
+                items.forEach(item => item.classList.remove('selected'));
+                
+                if (index >= 0 && index < items.length) {
+                    items[index].classList.add('selected');
+                    selectedIndex = index;
+                }
+            }
+
+            input.addEventListener('input', function() {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    fetchSuggestions(this.value.trim());
+                }, 300);
+            });
+
+            input.addEventListener('keydown', function(e) {
+                const items = dropdown.querySelectorAll('.autocomplete-item');
+                
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (selectedIndex < items.length - 1) {
+                        selectItem(selectedIndex + 1);
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (selectedIndex > 0) {
+                        selectItem(selectedIndex - 1);
+                    }
+                } else if (e.key === 'Enter' && selectedIndex >= 0) {
+                    e.preventDefault();
+                    input.value = suggestions[selectedIndex];
+                    dropdown.style.display = 'none';
+                    this.form.submit();
+                } else if (e.key === 'Escape') {
+                    dropdown.style.display = 'none';
+                    selectedIndex = -1;
+                }
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
+        }
+
+        // Initialize autocomplete for the main search form
+        document.addEventListener('DOMContentLoaded', function() {
+            initAutocomplete('search-input-main', 'autocomplete-dropdown-main');
+        });
+    </script>
 </body>
 </html>
 `

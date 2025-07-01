@@ -111,6 +111,7 @@ func (v *Verse) RemoveItalicMarkers() {
 }
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
+	app.Router.HandleFunc("/bible/autocomplete", app.autocomplete)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
 	app.Router.HandleFunc("/bible/list_books/", app.listBooks)
 	app.Router.HandleFunc("/bible/list_books", app.listBooks) // why do i have to be explicit about the post slash here..
@@ -471,6 +472,62 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func (app *App) autocomplete(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	
+	if len(query) < 2 {
+		jsonizeResponse([]string{}, w)
+		return
+	}
+	
+	// Simple approach: get verses that contain words starting with the query
+	rows, err := app.Database.Query(`
+		SELECT DISTINCT text 
+		FROM kjv 
+		WHERE LOWER(text) LIKE '%' || LOWER(?) || '%'
+		LIMIT 50
+	`, query)
+	
+	if err != nil {
+		log.Printf("Autocomplete query error: %v", err)
+		jsonizeResponse([]string{}, w)
+		return
+	}
+	defer rows.Close()
+	
+	// Extract words from the verse texts
+	wordSet := make(map[string]bool)
+	suggestions := []string{}
+	
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			continue
+		}
+		
+		// Split text into words and find matches
+		words := strings.Fields(strings.ToLower(text))
+		for _, word := range words {
+			// Clean word of punctuation
+			cleaned := strings.Trim(word, ".,;:!?()[]\"'")
+			if len(cleaned) > 1 && strings.HasPrefix(cleaned, strings.ToLower(query)) {
+				if !wordSet[cleaned] {
+					wordSet[cleaned] = true
+					suggestions = append(suggestions, cleaned)
+					if len(suggestions) >= 10 {
+						break
+					}
+				}
+			}
+		}
+		if len(suggestions) >= 10 {
+			break
+		}
+	}
+	
+	jsonizeResponse(suggestions, w)
 }
 
 func jsonizeResponse(obj interface{}, w http.ResponseWriter) {

@@ -1,0 +1,3 @@
+{"level":"info","msg":"Database connection OK.","time":"2025-06-29T12:03:39.802-04:00"}
+{"level":"info","msg":"Connected to Redis: PONG","time":"2025-06-29T12:03:39.802-04:00"}
+{"level":"info","msg":"Starting Bible API server on :8000","time":"2025-06-29T12:03:39.803-04:00"}
