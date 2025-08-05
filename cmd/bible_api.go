@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"runtime/debug"
 	"strings"
 
 	"github.com/go-redis/redis/v8"
@@ -26,10 +25,38 @@ func removeTrailingSlash(next http.Handler) http.Handler {
 }
 
 func main() {
+	// Configure logging
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	
+	level, err := log.ParseLevel(logLevel)
+	if err != nil {
+		log.Warnf("Invalid log level '%s', defaulting to info", logLevel)
+		level = log.InfoLevel
+	}
+	log.SetLevel(level)
+	
+	// Set JSON formatter for structured logging
+	log.SetFormatter(&log.JSONFormatter{
+		TimestampFormat: "2006-01-02T15:04:05.000Z07:00",
+	})
+	
+	// Configuration from environment variables with sensible defaults
+	defaultDBPath := os.Getenv("DB_PATH")
+	if defaultDBPath == "" {
+		defaultDBPath = "/tmp/kjv.db"
+	}
+	
+	defaultPort := os.Getenv("PORT")
+	if defaultPort == "" {
+		defaultPort = "8000"
+	}
 
-	debug.PrintStack()
-	dbPath := flag.String("dbPath", "/tmp/kjv.db", "Path to kjv database.")
+	dbPath := flag.String("dbPath", defaultDBPath, "Path to kjv database.")
 	createDB := flag.Bool("createDB", false, "Create the kjv database.")
+	port := flag.String("port", defaultPort, "Port to listen on.")
 	flag.Parse()
 
 	// Create the DB if asked
@@ -49,7 +76,7 @@ func main() {
 
 	// We didnt create a database, lets go
 	// Check the db path exists
-	_, err := os.Stat(*dbPath)
+	_, err = os.Stat(*dbPath)
 	if os.IsNotExist(err) {
 		log.Errorf("database path does not exist: %s", *dbPath)
 		fmt.Println("Provide dbPath else use createDB argument")
@@ -107,8 +134,8 @@ func main() {
 		Redis:    rdb,
 	}
 	app.SetupRouter()
-	port := ":8000"
-	log.Infof("Listening on %s\n", port)
+	listenAddr := ":" + *port
+	log.Infof("Starting Bible API server on %s", listenAddr)
 	// Serve
-	log.Fatal(http.ListenAndServe(port, removeTrailingSlash(router)))
+	log.Fatal(http.ListenAndServe(listenAddr, removeTrailingSlash(router)))
 }

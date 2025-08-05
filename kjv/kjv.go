@@ -5,19 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
-	"net/http"
-
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/mux"
 	kjv "github.com/r4wm/bible_api"
+	log "github.com/sirupsen/logrus"
 )
 
 const lastCardinalVerseNum = 31101
@@ -112,6 +111,7 @@ func (v *Verse) RemoveItalicMarkers() {
 }
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
+	app.Router.HandleFunc("/bible/autocomplete", app.autocomplete)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
 	app.Router.HandleFunc("/bible/list_books/", app.listBooks)
 	app.Router.HandleFunc("/bible/list_books", app.listBooks) // why do i have to be explicit about the post slash here..
@@ -140,10 +140,21 @@ func (app *App) SetupRouter() {
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
-	// Extract books from BookChapterLimit map to maintain consistency
-	books := make([]string, 0, len(BookChapterLimit))
-	for book := range BookChapterLimit {
-		books = append(books, book)
+	// Maintain proper biblical order instead of random map iteration
+	books := []string{
+		"GENESIS", "EXODUS", "LEVITICUS", "NUMBERS", "DEUTERONOMY",
+		"JOSHUA", "JUDGES", "RUTH", "1SAMUEL", "2SAMUEL",
+		"1KINGS", "2KINGS", "1CHRONICLES", "2CHRONICLES", "EZRA",
+		"NEHEMIAH", "ESTHER", "JOB", "PSALMS", "PROVERBS",
+		"ECCLESIASTES", "SONG OF SOLOMON", "ISAIAH", "JEREMIAH", "LAMENTATIONS",
+		"EZEKIEL", "DANIEL", "HOSEA", "JOEL", "AMOS",
+		"OBADIAH", "JONAH", "MICAH", "NAHUM", "HABAKKUK",
+		"ZEPHANIAH", "HAGGAI", "ZECHARIAH", "MALACHI", "MATTHEW",
+		"MARK", "LUKE", "JOHN", "ACTS", "ROMANS",
+		"1CORINTHIANS", "2CORINTHIANS", "GALATIANS", "EPHESIANS", "PHILIPPIANS",
+		"COLOSSIANS", "1THESSALONIANS", "2THESSALONIANS", "1TIMOTHY", "2TIMOTHY",
+		"TITUS", "PHILEMON", "HEBREWS", "JAMES", "1PETER",
+		"2PETER", "1JOHN", "2JOHN", "3JOHN", "JUDE", "REVELATION",
 	}
 
 	// funcs generates the link needed for button
@@ -213,10 +224,15 @@ func (app *App) getBook(w http.ResponseWriter, r *http.Request) {
 	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
 	t, err := template.New("chapters").Funcs(funcs).Parse(chapterButtonsTemplate)
 	if err != nil {
-		panic(err)
+		http.Error(w, "Could not parse template", http.StatusInternalServerError)
+		log.Printf("Template parsing error: %v", err)
+		return
 	}
 
-	t.Execute(w, chapters)
+	if err := t.Execute(w, chapters); err != nil {
+		http.Error(w, "Could not execute template", http.StatusInternalServerError)
+		log.Printf("Template execution error: %v", err)
+	}
 }
 
 // ListChapters list the chapters of the book with clickable buttons for navigation
@@ -281,7 +297,7 @@ func (app *App) listChapters(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
-	fmt.Printf("%v\n", chapterInfo)
+	log.Debugf("Chapter info: %+v", chapterInfo)
 	w.Header().Set("Content-Type", "text/html")
 	t.Execute(w, chapterInfo)
 }
@@ -299,12 +315,16 @@ func (app *App) getRandomVerseFromDB() (Verse, error) {
 
 	rows, err := app.Database.Query(stmt)
 	if err != nil {
-		log.Fatalf("Failed DB.Query(%s)\n", stmt)
+		log.Errorf("Failed DB.Query(%s): %v", stmt, err)
 		return randVerse, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
-		rows.Scan(&randVerse.Book, &randVerse.Chapter, &randVerse.Verse, &randVerse.Text)
+		if err := rows.Scan(&randVerse.Book, &randVerse.Chapter, &randVerse.Verse, &randVerse.Text); err != nil {
+			log.Errorf("Failed to scan random verse row: %v", err)
+			return randVerse, err
+		}
 	}
 
 	// OK
@@ -321,33 +341,44 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	graphBookCounter := [66]int{}
-	var defaultSearchLimit = "100000"
+	var defaultSearchLimit = "10000"
 
 	// Handle text query
 	searchText, ok := r.URL.Query()["q"]
-	fmt.Printf("%v\n", searchText)
 	if !ok || len(searchText) < 1 {
-		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
+		// Show search form instead of biblical quote
+		app.showSearchForm(w, r)
 		return
 	}
-	// Check for special characters in search string and return error if found
-	if matched, _ := regexp.MatchString(`[^\w\s]`, searchText[0]); matched {
+	log.Debugf("Search query: %s", searchText[0])
+	// Validate search string - allow only alphanumeric, spaces, and common punctuation
+	if matched, _ := regexp.MatchString(`[^\w\s'".,;:!?()-]`, searchText[0]); matched {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Search string contains special characters which are not allowed"))
+		w.Write([]byte("Search string contains invalid characters"))
+		return
+	}
+
+	// Prevent extremely short or long search terms
+	if len(strings.TrimSpace(searchText[0])) < 2 || len(searchText[0]) > 100 {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Search string must be between 2 and 100 characters"))
 		return
 	}
 
 	// Handle limit size
 	searchLimit, ok := r.URL.Query()["n"]
+	var limitStr string
 	if !ok || len(searchLimit) < 1 {
-		searchLimit = append(searchLimit, defaultSearchLimit)
+		limitStr = defaultSearchLimit
+	} else {
+		limitStr = searchLimit[0]
 	}
 
-	limit, err := strconv.Atoi(searchLimit[0])
-	if err != nil {
-		fmt.Println("Whoopsi with the limit size.")
-		w.WriteHeader(http.StatusNotAcceptable)
-		w.Write([]byte("whoopsie with the limit size.."))
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 || limit > 10000 {
+		log.Warnf("Invalid search limit provided: %s", limitStr)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Search limit must be a number between 1 and 10000"))
 		return
 	}
 
@@ -441,6 +472,62 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func (app *App) autocomplete(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	
+	if len(query) < 2 {
+		jsonizeResponse([]string{}, w)
+		return
+	}
+	
+	// Simple approach: get verses that contain words starting with the query
+	rows, err := app.Database.Query(`
+		SELECT DISTINCT text 
+		FROM kjv 
+		WHERE LOWER(text) LIKE '%' || LOWER(?) || '%'
+		LIMIT 50
+	`, query)
+	
+	if err != nil {
+		log.Printf("Autocomplete query error: %v", err)
+		jsonizeResponse([]string{}, w)
+		return
+	}
+	defer rows.Close()
+	
+	// Extract words from the verse texts
+	wordSet := make(map[string]bool)
+	suggestions := []string{}
+	
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			continue
+		}
+		
+		// Split text into words and find matches
+		words := strings.Fields(strings.ToLower(text))
+		for _, word := range words {
+			// Clean word of punctuation
+			cleaned := strings.Trim(word, ".,;:!?()[]\"'")
+			if len(cleaned) > 1 && strings.HasPrefix(cleaned, strings.ToLower(query)) {
+				if !wordSet[cleaned] {
+					wordSet[cleaned] = true
+					suggestions = append(suggestions, cleaned)
+					if len(suggestions) >= 10 {
+						break
+					}
+				}
+			}
+		}
+		if len(suggestions) >= 10 {
+			break
+		}
+	}
+	
+	jsonizeResponse(suggestions, w)
 }
 
 func jsonizeResponse(obj interface{}, w http.ResponseWriter) {
@@ -549,7 +636,7 @@ func lazyBook(shortName string) (book string, err error) {
 }
 
 func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("calling getChapter\n")
+	log.Debug("Processing getChapter request")
 	var (
 		verses = struct {
 			BookName            string
@@ -572,7 +659,7 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	if italicsParam := r.URL.Query().Get("show_italics"); italicsParam == "true" {
 		showItalics = true
 	}
-	fmt.Printf("show italics: is %v\n", showItalics)
+	log.Debugf("Show italics parameter: %v", showItalics)
 
 	book := strings.ToUpper(vars["book"])
 	bookName, err := lazyBook(book)
@@ -600,13 +687,14 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
 	verses.Chapter = chapter
 
-	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", verses.BookName, verses.Chapter)
+	// Use parameterized query to prevent SQL injection
+	stmt := "select verse, text from kjv where book=? and chapter=?"
 
-	rows, err := app.Database.Query(stmt)
+	rows, err := app.Database.Query(stmt, verses.BookName, verses.Chapter)
 	if err != nil {
-		log.Println(err)
+		log.Errorf("Database query failed: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("400 - Could not query such a request: "))
+		w.Write([]byte("500 - Could not query database"))
 		return
 	}
 	defer rows.Close()
@@ -615,7 +703,10 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	var text string
 
 	for rows.Next() {
-		rows.Scan(&verse, &text)
+		if err := rows.Scan(&verse, &text); err != nil {
+			log.Errorf("Failed to scan verse row: %v", err)
+			continue
+		}
 		if !showItalics {
 			text = strings.ReplaceAll(text, "[", "")
 			text = strings.ReplaceAll(text, "]", "")
@@ -657,32 +748,73 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	}}
 
 	t, err := template.New("chapter").Funcs(funcs).Funcs(verseLink).Parse(chapterTemplate)
-
 	if err != nil {
-		panic(err)
+		http.Error(w, "Could not parse template", http.StatusInternalServerError)
+		log.Printf("Template parsing error: %v", err)
+		return
 	}
 
-	t.Execute(w, verses)
+	if err := t.Execute(w, verses); err != nil {
+		http.Error(w, "Could not execute template", http.StatusInternalServerError)
+		log.Printf("Template execution error: %v", err)
+	}
+}
+
+func (app *App) showSearchForm(w http.ResponseWriter, r *http.Request) {
+	// Check if JSON is requested
+	if wantsJson(r) {
+		response := map[string]string{
+			"message": "Please provide a search query parameter 'q'",
+			"example": "/bible/search?q=love",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		jsonizeResponse(response, w)
+		return
+	}
+
+	// Show HTML search form
+	searchFormData := struct {
+		Color string
+	}{
+		Color: kjv.GetRandomColor(),
+	}
+
+	tmpl, err := template.New("searchForm").Parse(searchFormTemplate)
+	if err != nil {
+		http.Error(w, "Could not parse search form template", http.StatusInternalServerError)
+		log.Printf("Template parsing error: %v", err)
+		return
+	}
+
+	if err := tmpl.Execute(w, searchFormData); err != nil {
+		http.Error(w, "Could not execute search form template", http.StatusInternalServerError)
+		log.Printf("Template execution error: %v", err)
+	}
 }
 func (app *App) GetDailyProverbs(w http.ResponseWriter, r *http.Request) {
 
 	versesFromProverbs := []Verse{}
 
 	proverbsReading := GetProverbsDailyRange(GetDaysInMonth(), time.Now().Day())
-	fmt.Printf("%#v\n", proverbsReading)
+	log.Debugf("Proverbs reading range: %+v", proverbsReading)
 
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
-	fmt.Println(stmt)
+	stmt := "select book, chapter, verse, text from kjv where ordinal_verse between ? and ?"
+	log.Debugf("Proverbs query: ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
 
-	rows, err := app.Database.Query(stmt)
+	rows, err := app.Database.Query(stmt, proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
 	if err != nil {
-		log.Fatalf("Failed to query DAtabase")
+		log.Errorf("Failed to query database for daily proverbs: %v", err)
+		http.Error(w, "Failed to retrieve daily proverbs", http.StatusInternalServerError)
+		return
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
+		if err := rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text); err != nil {
+			log.Errorf("Failed to scan proverbs verse: %v", err)
+			continue
+		}
 		versesFromProverbs = append(versesFromProverbs, v)
 	}
 
@@ -695,20 +827,25 @@ func (app *App) GetDailyPsalms(w http.ResponseWriter, r *http.Request) {
 	versesFromPsalms := []Verse{}
 
 	proverbsReading := GetPsalmsDailyRange(GetDaysInMonth(), time.Now().Day())
-	fmt.Printf("%#v\n", proverbsReading)
+	log.Debugf("Psalms reading range: %+v", proverbsReading)
 
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
-	fmt.Println(stmt)
+	stmt := "select book, chapter, verse, text from kjv where ordinal_verse between ? and ?"
+	log.Debugf("Psalms query: ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
 
-	rows, err := app.Database.Query(stmt)
+	rows, err := app.Database.Query(stmt, proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
 	if err != nil {
-		log.Fatalf("Failed to query DAtabase")
+		log.Errorf("Failed to query database for daily psalms: %v", err)
+		http.Error(w, "Failed to retrieve daily psalms", http.StatusInternalServerError)
+		return
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
+		if err := rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text); err != nil {
+			log.Errorf("Failed to scan psalms verse: %v", err)
+			continue
+		}
 		versesFromPsalms = append(versesFromPsalms, v)
 	}
 

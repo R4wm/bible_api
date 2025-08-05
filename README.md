@@ -1,10 +1,13 @@
 # Bible API
 
-- A raw high performance RESTful API written in Go
-- King James Version Pure Cambridge Text
-- No ads, No distractions, not ever.
-- **NEW**: Redis-based rate limiting for abuse prevention
-- Easy navigation
+> A production-ready, high-performance RESTful API for the King James Version Bible
+
+- **High Performance**: Built with Go for speed and reliability
+- **King James Version**: Pure Cambridge Text
+- **Clean & Fast**: No ads, no distractions, ever
+- **Enterprise Ready**: Redis-based rate limiting and structured logging
+- **Security First**: Input validation, SQL injection protection, and comprehensive error handling
+- **Easy Navigation**: Intuitive REST endpoints with JSON/HTML responses
   - [Simple book listing and buttons choice](https://mintz5.duckdns.org/bible/list_books)
   - [Random Verse Generator](https://mintz5.duckdns.org/bible/random_verse)
   - [All pages support json output](https://mintz5.duckdns.org/bible/random_verse?json=true)
@@ -39,12 +42,15 @@
 
 ### 🔧 Technical Features
 
-- JSON and HTML response formats
-- RESTful API design
-- SQLite database backend
-- Redis for rate limiting
-- Docker support with docker-compose
-- Graceful error handling
+- **Dual Format Support**: JSON and HTML response formats
+- **RESTful Design**: Clean, intuitive API endpoints
+- **SQLite Backend**: Fast, reliable database with parameterized queries
+- **Redis Integration**: Rate limiting and caching
+- **Docker Ready**: Full docker-compose setup included
+- **Production Grade**: Comprehensive error handling and input validation
+- **Structured Logging**: JSON logging with configurable levels
+- **Environment Config**: Flexible configuration via environment variables
+- **Security Hardened**: SQL injection protection and input sanitization
 
 ## 🚀 Quick Start
 
@@ -193,39 +199,68 @@ go build -o bible_api cmd/bible_api.go
 # Create database (first time only)
 ./bible_api -createDB -dbPath ./data/kjv.db
 
-# Run
+# Run with default settings
 ./bible_api -dbPath ./data/kjv.db
+
+# Run with custom port
+./bible_api -dbPath ./data/kjv.db -port 9000
+
+# Run with environment variables
+export DB_PATH=./data/kjv.db
+export PORT=8080
+export LOG_LEVEL=debug
+./bible_api
 ```
 
 ### Environment Variables
 
 ```bash
+# Database Configuration
+DB_PATH=/path/to/kjv.db      # Path to SQLite database file
+
+# Server Configuration  
+PORT=8000                    # Server port (default: 8000)
+
+# Redis Configuration
 REDIS_ADDR=localhost:6379    # Redis server address
 REDIS_PASSWORD=              # Redis password (if any)
+
+# Logging Configuration
+LOG_LEVEL=info              # Log level: debug, info, warn, error
 ```
 
-## TODO:
+## 🗺️ Roadmap
 
-- Swipe to next chapter
-- Move from SQLite3 to Elasticsearch
-- Detailed search analytics
-- Authentication for admin endpoints
-- Rate limiting per user (not just IP)
-- WebSocket support for real-time updates
+### Upcoming Features
+- [ ] Swipe navigation for mobile interfaces
+- [ ] Elasticsearch integration for advanced search
+- [ ] Detailed search analytics and metrics
+- [ ] JWT authentication for admin endpoints
+- [ ] User-based rate limiting (not just IP)
+- [ ] WebSocket support for real-time updates
+- [ ] API versioning support
+- [ ] Prometheus metrics endpoint
+
+### Recent Improvements ✅
+- [x] **Security Hardening**: SQL injection prevention, input validation
+- [x] **Enhanced Error Handling**: Graceful error responses, no more panics
+- [x] **Structured Logging**: JSON logging with configurable levels
+- [x] **Environment Configuration**: Flexible config via env vars
+- [x] **Production Ready**: Comprehensive cleanup and optimization
 
 ## 📁 Project Structure
 
 ```
 bible_api/
 ├── cmd/
-│   └── bible_api.go          # Main application entry point
+│   └── bible_api.go          # Main application entry point with logging config
 ├── kjv/
-│   ├── kjv.go               # Core Bible API handlers
+│   ├── kjv.go               # Core Bible API handlers (security hardened)
 │   ├── admin.go             # Admin endpoints for rate limiting
 │   ├── reading.go           # Daily reading schedule logic
 │   └── templates.go         # HTML templates
 ├── middleware/
-│   └── rate_limiter.go      # Redis-based rate limiting
+│   └── rate_limiter.go      # Redis-based rate limiting with structured logging
 ├── data/
 │   └── kjv.db              # SQLite Bible database
 ├── docker-compose.yml       # Docker setup with Redis
@@ -235,10 +270,20 @@ bible_api/
 └── RATE_LIMITING.md        # Detailed rate limiting documentation
 ```
 
+### Key Architecture Features
+
+- **Modular Design**: Clean separation of concerns
+- **Security First**: Parameterized queries, input validation
+- **Observability**: Structured logging throughout
+- **Configuration**: Environment-based configuration
+- **Error Handling**: Graceful error responses, no panics
+
 ## 📖 Documentation
 
 - [Rate Limiting Guide](RATE_LIMITING.md) - Detailed rate limiting documentation
 - [API Examples](#-testing) - Example API calls and responses
+- [Security Features](#-technical-features) - Input validation and SQL injection protection
+- [Configuration Guide](#environment-variables) - Environment variable reference
 
 ## 🤝 Contributing
 

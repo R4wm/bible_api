@@ -42,6 +42,9 @@ func (app *App) SetupAdminRoutes() {
 
 	// Get all blocked IPs (this would require additional Redis tracking)
 	admin.HandleFunc("/blocked-ips", app.getBlockedIPs).Methods("GET")
+
+	// Reset all rate limits (development helper)
+	admin.HandleFunc("/reset-rate-limits", app.resetAllRateLimits).Methods("POST")
 }
 
 func (app *App) getRateLimitStatus(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +148,59 @@ func (app *App) getBlockedIPs(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"message": "This endpoint would list all blocked IPs",
 		"note":    "Implementation depends on your Redis key management strategy",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (app *App) resetAllRateLimits(w http.ResponseWriter, r *http.Request) {
+	// Get Redis client context
+	ctx := r.Context()
+
+	// Count keys before deletion for reporting
+	rateLimitKeys, err := app.Redis.Keys(ctx, "rate_limit:*").Result()
+	if err != nil {
+		log.Printf("Admin: Failed to get rate limit keys: %v", err)
+		http.Error(w, "Failed to get rate limit keys", http.StatusInternalServerError)
+		return
+	}
+
+	blockedKeys, err := app.Redis.Keys(ctx, "blocked:*").Result()
+	if err != nil {
+		log.Printf("Admin: Failed to get blocked keys: %v", err)
+		http.Error(w, "Failed to get blocked keys", http.StatusInternalServerError)
+		return
+	}
+
+	// Delete all rate limit keys
+	var deletedRateLimit, deletedBlocked int64
+	if len(rateLimitKeys) > 0 {
+		deletedRateLimit, err = app.Redis.Del(ctx, rateLimitKeys...).Result()
+		if err != nil {
+			log.Printf("Admin: Failed to delete rate limit keys: %v", err)
+			http.Error(w, "Failed to delete rate limit keys", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Delete all blocked keys
+	if len(blockedKeys) > 0 {
+		deletedBlocked, err = app.Redis.Del(ctx, blockedKeys...).Result()
+		if err != nil {
+			log.Printf("Admin: Failed to delete blocked keys: %v", err)
+			http.Error(w, "Failed to delete blocked keys", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	log.Printf("Admin: Reset all rate limits - deleted %d rate limit keys and %d blocked keys", deletedRateLimit, deletedBlocked)
+
+	response := map[string]interface{}{
+		"message":             "All rate limits reset successfully",
+		"rate_limit_keys":     deletedRateLimit,
+		"blocked_keys":        deletedBlocked,
+		"total_keys_deleted":  deletedRateLimit + deletedBlocked,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
