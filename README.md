@@ -15,8 +15,6 @@
   - [Supports verse ranges](https://mintz5.duckdns.org/bible/EPHESIANS/2/8-9)
   - Search feature
     - Example: `https://mintz5.duckdns.org/bible/search?q=heart`
-      - Yearly Reading schedule for Old Testament and New Testament for every day
-      - Monthly Reading schedule for Proverbs and Psalms for every day
 
 ## ⚡ Features
 
@@ -26,7 +24,6 @@
 - Book navigation with clickable chapters
 - Verse range support (e.g., `/bible/romans/5/1-5`)
 - Full-text search across all books
-- Daily reading schedules for OT, NT, Psalms, and Proverbs
 
 ### 🛡️ Rate Limiting (NEW)
 
@@ -138,12 +135,6 @@ To use public version of running API, visit the [bible_api](https://mintz5.duckd
 - `GET /bible/search?q={query}` - Search Bible text
 - `GET /bible/random_verse` - Get random verse
 
-### Daily Reading
-
-- `GET /bible/daily/ot` - Old Testament daily reading
-- `GET /bible/daily/nt` - New Testament daily reading
-- `GET /bible/daily/psalms` - Daily Psalms
-- `GET /bible/daily/proverbs` - Daily Proverbs
 
 ### Admin (Rate Limiting)
 
@@ -222,7 +213,6 @@ bible_api/
 ├── kjv/
 │   ├── kjv.go               # Core Bible API handlers
 │   ├── admin.go             # Admin endpoints for rate limiting
-│   ├── reading.go           # Daily reading schedule logic
 │   └── templates.go         # HTML templates
 ├── middleware/
 │   └── rate_limiter.go      # Redis-based rate limiting

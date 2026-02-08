@@ -110,16 +110,47 @@ func (v *Verse) RemoveItalicMarkers() {
 	v.Text = strings.ReplaceAll(v.Text, "[", "")
 	v.Text = strings.ReplaceAll(v.Text, "]", "")
 }
+
+// Unified JSON Response Structures
+type UnifiedResponse struct {
+	Status string               `json:"status"`
+	Meta   ResponseMeta         `json:"meta"`
+	Data   ResponseData         `json:"data"`
+}
+
+type ResponseMeta struct {
+	Query       string `json:"query,omitempty"`
+	Count       int    `json:"count"`
+	Timestamp   string `json:"timestamp"`
+	QueryType   string `json:"query_type,omitempty"`
+	SearchLimit int    `json:"search_limit,omitempty"`
+}
+
+type ResponseData struct {
+	Books []BookData `json:"books"`
+}
+
+type BookData struct {
+	Name         string        `json:"name"`
+	ChapterCount int           `json:"chapter_count,omitempty"`
+	Chapters     []ChapterData `json:"chapters,omitempty"`
+}
+
+type ChapterData struct {
+	Number     int         `json:"number"`
+	VerseCount int         `json:"verse_count,omitempty"`
+	Verses     []VerseData `json:"verses,omitempty"`
+}
+
+type VerseData struct {
+	Number int    `json:"number"`
+	Text   string `json:"text"`
+}
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
 	app.Router.HandleFunc("/bible/list_books/", app.listBooks)
 	app.Router.HandleFunc("/bible/list_books", app.listBooks) // why do i have to be explicit about the post slash here..
-	app.Router.HandleFunc("/bible/daily/proverbs", app.GetDailyProverbs)
-	app.Router.HandleFunc("/bible/daily/psalms", app.GetDailyPsalms)
-	app.Router.HandleFunc("/bible/daily/ot", app.GetDailyOldTestament)
-	app.Router.HandleFunc("/bible/daily/nt", app.GetDailyNewTestament)
-	// app.Router.HandleFunc("/bible/daily", app.getDaily)
 
 	t := app.Router.PathPrefix("/bible/list_chapters").Subrouter()
 	t.HandleFunc("/{book}", app.listChapters)
@@ -128,12 +159,6 @@ func (app *App) SetupRouter() {
 	s.HandleFunc("/{book}", app.getBook)
 	s.HandleFunc("/{book}/{chapter}", app.getChapter)
 	s.HandleFunc("/{book}/{chapter}/{verse}", app.getVerse)
-	// TODO: Make this clean , reusable based on book
-	s.HandleFunc("/daily/proverbs", app.GetDailyProverbs)
-	s.HandleFunc("/daily/psalms", app.GetDailyPsalms)
-	s.HandleFunc("/daily/ot", app.GetDailyOldTestament)
-	s.HandleFunc("/daily/nt", app.GetDailyNewTestament)
-	// s.HandleFunc("/daily", app.getDaily)
 
 	// Setup admin routes for rate limit management
 	app.SetupAdminRoutes()
@@ -549,7 +574,7 @@ func lazyBook(shortName string) (book string, err error) {
 }
 
 func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("calling getChapter\n")
+	fmt.Println("calling getChapter")
 	var (
 		verses = struct {
 			BookName            string
@@ -663,109 +688,6 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t.Execute(w, verses)
-}
-func (app *App) GetDailyProverbs(w http.ResponseWriter, r *http.Request) {
-
-	versesFromProverbs := []Verse{}
-
-	proverbsReading := GetProverbsDailyRange(GetDaysInMonth(), time.Now().Day())
-	fmt.Printf("%#v\n", proverbsReading)
-
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		log.Fatalf("Failed to query DAtabase")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromProverbs = append(versesFromProverbs, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromProverbs, w)
-}
-
-func (app *App) GetDailyPsalms(w http.ResponseWriter, r *http.Request) {
-
-	versesFromPsalms := []Verse{}
-
-	proverbsReading := GetPsalmsDailyRange(GetDaysInMonth(), time.Now().Day())
-	fmt.Printf("%#v\n", proverbsReading)
-
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", proverbsReading.StartOrdinalVerse, proverbsReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		log.Fatalf("Failed to query DAtabase")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromPsalms = append(versesFromPsalms, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromPsalms, w)
-}
-
-func (app *App) GetDailyOldTestament(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Old Testament Daily Range")
-	versesFromOT := []Verse{}
-
-	t := time.Now()
-	OTReading := GetOldTestamentDailyRange(t.YearDay(), []string{})
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", OTReading.StartOrdinalVerse, OTReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-	rows, err := app.Database.Query(stmt)
-
-	if err != nil {
-		log.Fatalf("Failed to get verses for OT Reading")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromOT = append(versesFromOT, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromOT, w)
-
-}
-
-func (app *App) GetDailyNewTestament(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("New Testament Daily Range")
-	versesFromNT := []Verse{}
-
-	t := time.Now()
-	NTReading := GetNewTestamentDailyRange(t.YearDay())
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse between %d and %d", NTReading.StartOrdinalVerse, NTReading.EndOrdinalVerse)
-	fmt.Println(stmt)
-	rows, err := app.Database.Query(stmt)
-
-	if err != nil {
-		log.Fatalf("Failed to get verses for NT Reading")
-	}
-
-	for rows.Next() {
-		v := Verse{}
-		rows.Scan(&v.Book, &v.Chapter, &v.Verse, &v.Text)
-		// fmt.Printf("%#v\n", v)
-		versesFromNT = append(versesFromNT, v)
-	}
-
-	// TODO: Render HTML response , just JSON for now cause time
-	jsonizeResponse(versesFromNT, w)
-
 }
 
 func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
