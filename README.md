@@ -59,6 +59,21 @@ docker-compose up -d
 curl "http://localhost:8000/health"
 ```
 
+### OpenSearch (Single Node)
+
+```bash
+# Start OpenSearch and Dashboards
+make opensearch-up
+
+# Optional on some Linux hosts
+sudo sysctl -w vm.max_map_count=262144
+
+# Index the KJV DB into OpenSearch
+make index-kjv
+```
+
+OpenSearch runs at `http://localhost:9200` and Dashboards at `http://localhost:5601`.
+
 ### Method 2: Manual Setup
 
 ```bash
@@ -219,6 +234,8 @@ bible_api/
 ├── data/
 │   └── kjv.db              # SQLite Bible database
 ├── docker-compose.yml       # Docker setup with Redis
+├── scripts/
+│   └── index_kjv_to_opensearch.py # Bulk index KJV DB into OpenSearch
 ├── start_with_redis.sh     # Development startup script
 ├── test_rate_limit.sh      # Rate limiting test script
 ├── test_logging.sh         # Logging test script

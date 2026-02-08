@@ -1,6 +1,36 @@
 version: '3.8'
 
 services:
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: bible_api_opensearch
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    restart: unless-stopped
+
+  opensearch_dashboards:
+    image: opensearchproject/opensearch-dashboards:2.13.0
+    container_name: bible_api_opensearch_dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      - opensearch
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: bible_api_redis
@@ -29,4 +59,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  opensearch_data:
   redis_data:
