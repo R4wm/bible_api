@@ -54,6 +54,12 @@ services:
     environment:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=
+      - OPENSEARCH_URL=http://opensearch:9200
+      - OPENSEARCH_INDEX=kjv_v2
+      - OPENSEARCH_SYNONYMS_SET=kjv_synonyms
+      - GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com
+      - JWT_SECRET=change_me
+      - INTERNAL_TOKEN_SECRET=change_me
     depends_on:
       - redis
     restart: unless-stopped

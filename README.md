@@ -150,6 +150,22 @@ To use public version of running API, visit the [bible_api](https://mintz5.duckd
 - `GET /bible/search?q={query}` - Search Bible text
 - `GET /bible/random_verse` - Get random verse
 
+### v2 (OpenSearch)
+
+- `GET /bible/v2/search?q={query}` - OpenSearch full-text search
+- `GET /bible/v2/suggest?q={prefix}` - Predictive suggestions
+- `PUT /bible/v2/synonyms/{set}` - Replace synonym set (JWT required)
+- `POST /bible/v2/synonyms/{set}` - Append to synonym set (JWT required)
+- `DELETE /bible/v2/synonyms/{set}` - Remove from synonym set (JWT required)
+- `GET /v2` - Web UI (Google login + search/suggest)
+
+### Auth
+
+- `POST /auth/google/token` - Exchange Google ID token for app JWT + session cookie
+- `GET /auth/me` - Get current session token
+- `POST /auth/logout` - Clear session
+- `POST /admin/token` - Mint token with `X-Internal-Secret` (internal use)
+
 
 ### Admin (Rate Limiting)
 
@@ -183,9 +199,10 @@ curl "http://localhost:8000/bible/ROMANS/8/28?json=true&show_italics=true"
 
 ### Prerequisites
 
-- Go 1.16+
+- Go 1.20+
 - Redis server
 - SQLite3
+- OpenSearch 2.x (for v2 endpoints)
 
 ### Build from Source
 
@@ -208,12 +225,24 @@ go build -o bible_api cmd/bible_api.go
 ```bash
 REDIS_ADDR=localhost:6379    # Redis server address
 REDIS_PASSWORD=              # Redis password (if any)
+OPENSEARCH_URL=http://localhost:9200
+OPENSEARCH_INDEX=kjv_v2
+OPENSEARCH_SYNONYMS_SET=kjv_synonyms
+JWT_SECRET=change_me
+JWT_ISSUER=bible_api
+JWT_AUDIENCE=bible_api_clients
+JWT_TTL_SECONDS=3600
+SESSION_TTL_SECONDS=3600
+SESSION_COOKIE_NAME=bible_api_session
+SESSION_COOKIE_SECURE=false
+INTERNAL_TOKEN_SECRET=change_me
+GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com
 ```
 
 ## TODO:
 
 - Swipe to next chapter
-- Move from SQLite3 to Elasticsearch
+- Expand OpenSearch features (filters, relevance tuning)
 - Detailed search analytics
 - Authentication for admin endpoints
 - Rate limiting per user (not just IP)

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import urllib.request
 
-DEFAULT_INDEX = "bible_kjv_v1"
+DEFAULT_INDEX = "kjv_v2"
 
 
 def http_request(method, url, body=None, headers=None):
@@ -21,23 +22,7 @@ def http_request(method, url, body=None, headers=None):
 
 
 def ensure_index(base_url, index_name):
-    mapping = {
-        "settings": {
-            "number_of_shards": 1,
-            "number_of_replicas": 0
-        },
-        "mappings": {
-            "properties": {
-                "book": {"type": "keyword"},
-                "chapter": {"type": "integer"},
-                "verse": {"type": "integer"},
-                "text": {"type": "text"},
-                "ordinal_verse": {"type": "integer"},
-                "ordinal_book": {"type": "integer"},
-                "testament": {"type": "keyword"}
-            }
-        }
-    }
+    mapping = load_mapping()
 
     code, body = http_request(
         "PUT",
@@ -54,6 +39,31 @@ def ensure_index(base_url, index_name):
 
     sys.stderr.write(f"Failed to create index {index_name}: {code} {body.decode('utf-8', 'ignore')}\n")
     return False
+
+
+def load_mapping():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        mapping_path = os.path.join(base_dir, "opensearch_kjv_mapping.json")
+        with open(mapping_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        pass
+
+    return {
+        "mappings": {
+            "properties": {
+                "book": {"type": "keyword"},
+                "chapter": {"type": "integer"},
+                "verse": {"type": "integer"},
+                "text": {"type": "text"},
+                "text_suggest": {"type": "completion"},
+                "ordinal_verse": {"type": "integer"},
+                "ordinal_book": {"type": "integer"},
+                "testament": {"type": "keyword"},
+            }
+        }
+    }
 
 
 def bulk_index(base_url, index_name, rows, batch_size):
@@ -81,6 +91,7 @@ def bulk_index(base_url, index_name, rows, batch_size):
             "chapter": row[1],
             "verse": row[2],
             "text": row[3],
+            "text_suggest": row[3],
             "ordinal_verse": row[4],
             "ordinal_book": row[5],
             "testament": row[6],

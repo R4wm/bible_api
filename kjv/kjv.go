@@ -97,6 +97,22 @@ type App struct {
 	Router   *mux.Router
 	Database *sql.DB
 	Redis    *redis.Client
+
+	OpenSearchURL      string
+	OpenSearchIndex    string
+	OpenSearchUsername string
+	OpenSearchPassword string
+	OpenSearchHTTP     *http.Client
+
+	JWTSecret           []byte
+	JWTIssuer           string
+	JWTAudience         string
+	JWTTTLSeconds       int
+	SessionTTLSeconds   int
+	SessionCookieName   string
+	SessionCookieSecure bool
+	GoogleClientID      string
+	InternalTokenSecret string
 }
 
 type Verse struct {
@@ -113,9 +129,9 @@ func (v *Verse) RemoveItalicMarkers() {
 
 // Unified JSON Response Structures
 type UnifiedResponse struct {
-	Status string               `json:"status"`
-	Meta   ResponseMeta         `json:"meta"`
-	Data   ResponseData         `json:"data"`
+	Status string       `json:"status"`
+	Meta   ResponseMeta `json:"meta"`
+	Data   ResponseData `json:"data"`
 }
 
 type ResponseMeta struct {
@@ -146,6 +162,7 @@ type VerseData struct {
 	Number int    `json:"number"`
 	Text   string `json:"text"`
 }
+
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
@@ -162,6 +179,8 @@ func (app *App) SetupRouter() {
 
 	// Setup admin routes for rate limit management
 	app.SetupAdminRoutes()
+	app.SetupAuthRoutes()
+	app.SetupV2Routes()
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {

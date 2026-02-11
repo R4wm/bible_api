@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/mux"
@@ -106,9 +108,53 @@ func main() {
 		Database: database,
 		Redis:    rdb,
 	}
+	app.OpenSearchURL = getEnvOrDefault("OPENSEARCH_URL", "http://localhost:9200")
+	app.OpenSearchIndex = getEnvOrDefault("OPENSEARCH_INDEX", "kjv_v2")
+	app.OpenSearchUsername = os.Getenv("OPENSEARCH_USERNAME")
+	app.OpenSearchPassword = os.Getenv("OPENSEARCH_PASSWORD")
+	app.OpenSearchHTTP = &http.Client{Timeout: 10 * time.Second}
+
+	app.JWTSecret = []byte(os.Getenv("JWT_SECRET"))
+	app.JWTIssuer = getEnvOrDefault("JWT_ISSUER", "bible_api")
+	app.JWTAudience = getEnvOrDefault("JWT_AUDIENCE", "bible_api_clients")
+	app.JWTTTLSeconds = getEnvInt("JWT_TTL_SECONDS", 3600)
+	app.SessionTTLSeconds = getEnvInt("SESSION_TTL_SECONDS", 3600)
+	app.SessionCookieName = getEnvOrDefault("SESSION_COOKIE_NAME", "bible_api_session")
+	app.SessionCookieSecure = parseBoolEnv(os.Getenv("SESSION_COOKIE_SECURE"), false)
+	app.GoogleClientID = getEnvOrDefault("GOOGLE_CLIENT_ID", "1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com")
+	app.InternalTokenSecret = os.Getenv("INTERNAL_TOKEN_SECRET")
+	app.normalizeAuthConfig()
 	app.SetupRouter()
+	app.InitOpenSearch()
 	port := ":8000"
 	log.Infof("Listening on %s\n", port)
 	// Serve
 	log.Fatal(http.ListenAndServe(port, removeTrailingSlash(router)))
+}
+
+func getEnvOrDefault(key, def string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return def
+}
+
+func getEnvInt(key string, def int) int {
+	if val := os.Getenv(key); val != "" {
+		if parsed, err := strconv.Atoi(val); err == nil {
+			return parsed
+		}
+	}
+	return def
+}
+
+func parseBoolEnv(value string, def bool) bool {
+	if value == "" {
+		return def
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return def
+	}
+	return parsed
 }

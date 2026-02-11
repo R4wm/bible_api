@@ -1,0 +1,52 @@
+{
+  "settings": {
+    "analysis": {
+      "filter": {
+        "kjv_synonyms": {
+          "type": "synonym_graph",
+          "synonyms_set": "kjv_synonyms"
+        }
+      },
+      "analyzer": {
+        "english_with_synonyms": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "kjv_synonyms"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "book": {
+        "type": "keyword"
+      },
+      "chapter": {
+        "type": "integer"
+      },
+      "verse": {
+        "type": "integer"
+      },
+      "text": {
+        "type": "text",
+        "analyzer": "english",
+        "search_analyzer": "english_with_synonyms"
+      },
+      "text_suggest": {
+        "type": "completion"
+      },
+      "ordinal_verse": {
+        "type": "integer"
+      },
+      "ordinal_book": {
+        "type": "integer"
+      },
+      "testament": {
+        "type": "keyword"
+      }
+    }
+  }
+}
