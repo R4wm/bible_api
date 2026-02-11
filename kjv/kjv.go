@@ -181,6 +181,8 @@ func (app *App) SetupRouter() {
 	app.SetupAdminRoutes()
 	app.SetupAuthRoutes()
 	app.SetupV2Routes()
+	app.SetupDocsRoutes()
+	app.SetupUIRoutes()
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {

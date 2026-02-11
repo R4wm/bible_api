@@ -1,3 +1,10 @@
+FROM node:20 AS ui
+WORKDIR /ui
+COPY web/package.json /ui/
+RUN npm install
+COPY web /ui
+RUN npm run build
+
 #FROM golang:1.21-alpine AS build
 FROM golang:latest AS build
 
@@ -10,6 +17,7 @@ RUN mkdir -p /go/src/bible_api
 WORKDIR /go/src/bible_api
 
 COPY . /go/src/bible_api
+COPY --from=ui /ui/dist /go/src/bible_api/web/dist
 
 ENV CGO_ENABLED=1
 ENV GOOS=linux
@@ -21,7 +29,7 @@ RUN /bible_api -createDB
 # WHEN IN PROD #
 ################
 # FROM scratch
-WORKDIR /
+WORKDIR /go/src/bible_api
 EXPOSE 8000
 
 # Set default Redis connection to the linked Redis container
@@ -31,7 +39,7 @@ ENV REDIS_PASSWORD=
 # COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # COPY --from=build /go/src/bible_api/data/kjv.db /kjv.db
 # COPY --from=build /go/src/bible_api /bible_api
-CMD ["./bible_api", "-dbPath", "/tmp/kjv.db"]
+CMD ["/bible_api", "-dbPath", "/tmp/kjv.db"]
 
 ################
 # WHEN TESTING #

@@ -18,3 +18,7 @@ deploy
 kjv.db
 
 *#
+
+# Frontend
+web/node_modules/
+web/dist/

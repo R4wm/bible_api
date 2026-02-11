@@ -37,8 +37,6 @@ type v2SearchResponse struct {
 }
 
 func (app *App) SetupV2Routes() {
-	app.Router.HandleFunc("/v2", app.v2UI).Methods("GET")
-
 	v2 := app.Router.PathPrefix("/bible/v2").Subrouter()
 	v2.HandleFunc("/search", app.searchV2).Methods("GET")
 	v2.HandleFunc("/suggest", app.suggestV2).Methods("GET")
@@ -79,23 +77,6 @@ func (app *App) InitOpenSearch() {
 	}
 	if err := app.createOpenSearchIndex(app.OpenSearchIndex, mapping); err != nil {
 		fmt.Printf("OpenSearch index create failed: %v\n", err)
-	}
-}
-
-func (app *App) v2UI(w http.ResponseWriter, r *http.Request) {
-	t, err := app.v2Template()
-	if err != nil {
-		http.Error(w, "Failed to render UI", http.StatusInternalServerError)
-		return
-	}
-	data := struct {
-		GoogleClientID string
-	}{
-		GoogleClientID: app.GoogleClientID,
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := t.Execute(w, data); err != nil {
-		http.Error(w, "Failed to render UI", http.StatusInternalServerError)
 	}
 }
 

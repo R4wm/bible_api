@@ -158,10 +158,13 @@ To use public version of running API, visit the [bible_api](https://mintz5.duckd
 - `POST /bible/v2/synonyms/{set}` - Append to synonym set (JWT required)
 - `DELETE /bible/v2/synonyms/{set}` - Remove from synonym set (JWT required)
 - `GET /v2` - Web UI (Google login + search/suggest)
+- `GET /docs` - API documentation (HTML)
+- `GET /docs.json` - API documentation (JSON)
 
 ### Auth
 
 - `POST /auth/google/token` - Exchange Google ID token for app JWT + session cookie
+- `GET /auth/config` - Auth configuration (Google client id)
 - `GET /auth/me` - Get current session token
 - `POST /auth/logout` - Clear session
 - `POST /admin/token` - Mint token with `X-Internal-Secret` (internal use)
@@ -219,6 +222,24 @@ go build -o bible_api cmd/bible_api.go
 # Run
 ./bible_api -dbPath ./data/kjv.db
 ```
+
+### UI (React)
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Build static UI for `/v2`:
+
+```bash
+cd web
+npm run build
+```
+
+The Go server serves `web/dist` at `/v2`.
+Docker builds the UI automatically during image build.
 
 ### Environment Variables
 

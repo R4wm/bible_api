@@ -39,11 +39,18 @@ type sessionData struct {
 
 func (app *App) SetupAuthRoutes() {
 	app.Router.HandleFunc("/auth/google/token", app.googleToken).Methods("POST")
+	app.Router.HandleFunc("/auth/config", app.authConfig).Methods("GET")
 	app.Router.HandleFunc("/auth/me", app.authMe).Methods("GET")
 	app.Router.HandleFunc("/auth/logout", app.authLogout).Methods("POST")
 
 	admin := app.Router.PathPrefix("/admin").Subrouter()
 	admin.HandleFunc("/token", app.internalToken).Methods("POST")
+}
+
+func (app *App) authConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"google_client_id": app.GoogleClientID,
+	})
 }
 
 func (app *App) googleToken(w http.ResponseWriter, r *http.Request) {
