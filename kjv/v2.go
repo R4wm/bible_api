@@ -161,13 +161,21 @@ func (app *App) suggestV2(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := map[string]interface{}{
-		"suggest": map[string]interface{}{
-			"text_suggest": map[string]interface{}{
-				"prefix": query,
-				"completion": map[string]interface{}{
-					"field": "text_suggest",
-					"size":  size,
-				},
+		"query": map[string]interface{}{
+			"match_phrase_prefix": map[string]interface{}{
+				"text": query,
+			},
+		},
+		"size": size,
+		"_source": []string{
+			"text",
+			"book",
+			"chapter",
+			"verse",
+		},
+		"highlight": map[string]interface{}{
+			"fields": map[string]interface{}{
+				"text": map[string]interface{}{},
 			},
 		},
 	}
@@ -183,7 +191,7 @@ func (app *App) suggestV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	suggestions, took, err := parseSuggestResponse(respBody)
+	suggestions, took, err := parseSuggestSearchResponse(respBody)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "Failed to parse suggest response")
 		return
@@ -382,6 +390,36 @@ func parseSuggestResponse(body []byte) ([]map[string]interface{}, int, error) {
 				})
 			}
 		}
+	}
+	return out, resp.Took, nil
+}
+
+type osSuggestSearchResp struct {
+	Took int `json:"took"`
+	Hits struct {
+		Hits []struct {
+			Score  float64 `json:"_score"`
+			Source struct {
+				Text    string `json:"text"`
+				Book    string `json:"book"`
+				Chapter int    `json:"chapter"`
+				Verse   int    `json:"verse"`
+			} `json:"_source"`
+		} `json:"hits"`
+	} `json:"hits"`
+}
+
+func parseSuggestSearchResponse(body []byte) ([]map[string]interface{}, int, error) {
+	var resp osSuggestSearchResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, 0, err
+	}
+	out := make([]map[string]interface{}, 0, len(resp.Hits.Hits))
+	for _, hit := range resp.Hits.Hits {
+		out = append(out, map[string]interface{}{
+			"text":  hit.Source.Text,
+			"score": hit.Score,
+		})
 	}
 	return out, resp.Took, nil
 }

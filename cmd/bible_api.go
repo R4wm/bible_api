@@ -123,7 +123,7 @@ func main() {
 	app.SessionCookieSecure = parseBoolEnv(os.Getenv("SESSION_COOKIE_SECURE"), false)
 	app.GoogleClientID = getEnvOrDefault("GOOGLE_CLIENT_ID", "1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com")
 	app.InternalTokenSecret = os.Getenv("INTERNAL_TOKEN_SECRET")
-	app.normalizeAuthConfig()
+	app.NormalizeAuthConfig()
 	app.SetupRouter()
 	app.InitOpenSearch()
 	port := ":8000"

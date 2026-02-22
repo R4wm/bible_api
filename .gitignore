@@ -22,3 +22,9 @@ kjv.db
 # Frontend
 web/node_modules/
 web/dist/
+
+# Env files
+.env
+.env.*
+web/.env
+web/.env.*

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/gorilla/mux"
 	"google.golang.org/api/idtoken"
 )
 
@@ -200,7 +201,7 @@ func (app *App) mintJWT(sub, scope string, ttl int) (string, int64, error) {
 	return signed, exp, nil
 }
 
-func (app *App) jwtMiddleware(requiredScope string) muxMiddleware {
+func (app *App) jwtMiddleware(requiredScope string) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if len(app.JWTSecret) == 0 {
@@ -233,8 +234,6 @@ func (app *App) jwtMiddleware(requiredScope string) muxMiddleware {
 		})
 	}
 }
-
-type muxMiddleware func(http.Handler) http.Handler
 
 func hasScope(scope, required string) bool {
 	for _, part := range strings.Fields(scope) {
@@ -329,7 +328,7 @@ func randomToken(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func (app *App) normalizeAuthConfig() {
+func (app *App) NormalizeAuthConfig() {
 	if app.JWTIssuer == "" {
 		app.JWTIssuer = defaultJWTIssuer
 	}

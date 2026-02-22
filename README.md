@@ -1,5 +1,17 @@
 # Bible API
 
+## Quick URLs (Local)
+
+- API base: `http://localhost:8000`
+- Search endpoint (example): `http://localhost:8000/bible/v2/search?q=genesis`
+- Web UI: `http://localhost:8000/v2`
+- OpenSearch: `http://localhost:9200`
+- OpenSearch Dashboards: `http://localhost:5601`
+
+> If search returns `lookup opensearch on 127.0.0.11:53: no such host`, the API container can’t resolve the `opensearch` service name. Start all services via `docker compose` so they share the same network.
+
+> OpenSearch 2.12+ requires an initial admin password. Set `OPENSEARCH_INITIAL_ADMIN_PASSWORD` in your environment before running `docker compose up`.
+
 - A raw high performance RESTful API written in Go
 - King James Version Pure Cambridge Text
 - No ads, No distractions, not ever.
@@ -268,6 +280,7 @@ GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleuserc
 - Authentication for admin endpoints
 - Rate limiting per user (not just IP)
 - WebSocket support for real-time updates
+- Document OpenSearch DNS resolution errors (`getaddrinfo ENOTFOUND opensearch`) and how to fix by running all services via `docker compose` so they share the same network
 
 ## 📁 Project Structure
 

@@ -172,6 +172,9 @@ func (app *App) SetupRouter() {
 	t := app.Router.PathPrefix("/bible/list_chapters").Subrouter()
 	t.HandleFunc("/{book}", app.listChapters)
 
+	// Register v2 routes before v1 /bible/{book} routes so they don't get shadowed.
+	app.SetupV2Routes()
+
 	s := app.Router.PathPrefix("/bible").Subrouter()
 	s.HandleFunc("/{book}", app.getBook)
 	s.HandleFunc("/{book}/{chapter}", app.getChapter)
@@ -180,7 +183,6 @@ func (app *App) SetupRouter() {
 	// Setup admin routes for rate limit management
 	app.SetupAdminRoutes()
 	app.SetupAuthRoutes()
-	app.SetupV2Routes()
 	app.SetupDocsRoutes()
 	app.SetupUIRoutes()
 }

@@ -23,4 +23,4 @@ opensearch-down:
 	docker-compose down
 
 index-kjv:
-	python3 scripts/index_kjv_to_opensearch.py --db data/kjv.db --index bible_kjv_v1 --url http://localhost:9200
+	python3 scripts/index_kjv_to_opensearch.py --db data/kjv.db --index kjv_v2 --url http://localhost:9200
