@@ -284,10 +284,10 @@ GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleuserc
 
 ## 📚 Legacy Text Sources
 
-Legacy English plain-text bible files are stored in `data/bibles_txt_legacy/`.
+Legacy English plain-text bible files are stored in `assets/texts/`, one translation per directory.
 
 - Source: [BibleSuper SourceForge - All Bibles (Plain Text) EN-English](https://sourceforge.net/projects/biblesuper/files/All%20Bibles%20-%20Plain%20Text/EN-English/?utm_source=chatgpt.com)
-- `kjv.txt` is intentionally excluded from this set for now and should be skipped in ES import scripts.
+- `kjv.txt` is intentionally excluded from this set for now and should be skipped in import workflows.
 
 ### File Abbreviations
 
@@ -303,12 +303,24 @@ Legacy English plain-text bible files are stored in `data/bibles_txt_legacy/`.
 
 ### Integrity Check (MD5)
 
-An MD5 manifest is tracked at `data/bibles_txt_legacy/MD5SUMS`.
+Each translation directory includes its own `MD5SUM` file.
 
 ```bash
-cd data/bibles_txt_legacy
-md5sum -c MD5SUMS
+cd assets/texts/asv
+md5sum -c MD5SUM
 ```
+
+### Per-Translation Layout
+
+Each translation directory (example: `assets/texts/asv/`) contains:
+
+- `<translation>.txt` source text
+- `README.md` with source and notes
+- `CHANGELOG.md` for change history
+- `MD5SUM` for integrity verification
+- `scripts/import_to_sqlite.py` for SQLite ingestion
+- `scripts/import_to_opensearch.py` for OpenSearch ingestion
+- `scripts/verify_import.py` for checksum and import checks
 
 ## 📁 Project Structure
 
@@ -322,9 +334,20 @@ bible_api/
 │   └── templates.go         # HTML templates
 ├── middleware/
 │   └── rate_limiter.go      # Redis-based rate limiting
+├── assets/
+│   └── texts/
+│       ├── README.md
+│       ├── asv/
+│       ├── asvs/
+│       ├── bishops/
+│       ├── coverdale/
+│       ├── geneva/
+│       ├── kjv_strongs/
+│       ├── net/
+│       ├── tyndale/
+│       └── web/
 ├── data/
-│   ├── kjv.db              # SQLite Bible database
-│   └── bibles_txt_legacy/  # Legacy plain-text bible files + MD5SUMS
+│   └── kjv.db              # SQLite Bible database
 ├── docker-compose.yml       # Docker setup with Redis
 ├── scripts/
 │   └── index_kjv_to_opensearch.py # Bulk index KJV DB into OpenSearch
