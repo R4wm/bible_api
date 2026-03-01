@@ -282,6 +282,34 @@ GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleuserc
 - WebSocket support for real-time updates
 - Document OpenSearch DNS resolution errors (`getaddrinfo ENOTFOUND opensearch`) and how to fix by running all services via `docker compose` so they share the same network
 
+## 📚 Legacy Text Sources
+
+Legacy English plain-text bible files are stored in `data/bibles_txt_legacy/`.
+
+- Source: [BibleSuper SourceForge - All Bibles (Plain Text) EN-English](https://sourceforge.net/projects/biblesuper/files/All%20Bibles%20-%20Plain%20Text/EN-English/?utm_source=chatgpt.com)
+- `kjv.txt` is intentionally excluded from this set for now and should be skipped in ES import scripts.
+
+### File Abbreviations
+
+- `asv.txt`: American Standard Version
+- `asvs.txt`: American Standard Version (with Strong's numbers)
+- `bishops.txt`: Bishops' Bible
+- `coverdale.txt`: Coverdale Bible
+- `geneva.txt`: Geneva Bible
+- `kjv_strongs.txt`: King James Version (with Strong's numbers)
+- `net.txt`: New English Translation
+- `tyndale.txt`: Tyndale Bible
+- `web.txt`: World English Bible
+
+### Integrity Check (MD5)
+
+An MD5 manifest is tracked at `data/bibles_txt_legacy/MD5SUMS`.
+
+```bash
+cd data/bibles_txt_legacy
+md5sum -c MD5SUMS
+```
+
 ## 📁 Project Structure
 
 ```
@@ -295,7 +323,8 @@ bible_api/
 ├── middleware/
 │   └── rate_limiter.go      # Redis-based rate limiting
 ├── data/
-│   └── kjv.db              # SQLite Bible database
+│   ├── kjv.db              # SQLite Bible database
+│   └── bibles_txt_legacy/  # Legacy plain-text bible files + MD5SUMS
 ├── docker-compose.yml       # Docker setup with Redis
 ├── scripts/
 │   └── index_kjv_to_opensearch.py # Bulk index KJV DB into OpenSearch
