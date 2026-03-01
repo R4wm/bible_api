@@ -90,6 +90,9 @@ func main() {
 	// Router
 	router := mux.NewRouter().StrictSlash(false)
 
+	corsOrigins := strings.Split(getEnvOrDefault("CORS_ALLOW_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"), ",")
+	router.Use(middleware.CORSMiddleware(corsOrigins))
+
 	// Create rate limiter middleware
 	rateLimiter := middleware.NewRateLimiter(rdb)
 

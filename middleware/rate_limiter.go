@@ -22,7 +22,7 @@ type RateLimiter struct {
 func NewRateLimiter(redisClient *redis.Client) *RateLimiter {
 	return &RateLimiter{
 		client:   redisClient,
-		limit:    5,           // 5 requests per second
+		limit:    1000,        // 1000 requests per second
 		window:   time.Second, // 1 second window
 		blockTTL: time.Minute, // 1 minute block
 	}

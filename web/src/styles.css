@@ -149,6 +149,49 @@ body {
   cursor: default;
 }
 
+.navigator {
+  display: grid;
+  gap: 16px;
+}
+
+.select-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.select-row label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a7c6a;
+}
+
+.select-row select {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #e1d3c0;
+  background: #fff;
+  font-size: 15px;
+}
+
+.select-row select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: 13px;
+  color: #625b4a;
+}
+
+.read-results {
+  display: grid;
+  gap: 12px;
+}
+
 .suggestions {
   display: flex;
   flex-wrap: wrap;
