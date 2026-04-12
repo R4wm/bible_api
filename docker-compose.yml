@@ -61,6 +61,8 @@ services:
       - GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com
       - JWT_SECRET=change_me
       - INTERNAL_TOKEN_SECRET=change_me
+    volumes:
+      - bible_db:/data
     depends_on:
       - redis
     restart: unless-stopped
@@ -68,3 +70,4 @@ services:
 volumes:
   opensearch_data:
   redis_data:
+  bible_db:

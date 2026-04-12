@@ -45,24 +45,26 @@ type ReadVerse = {
   text: string;
 };
 
+type View = "books" | "chapters" | "reading" | "search";
+
 export default function App() {
-  const [token, setToken] = useState<string>("");
-  const [status, setStatus] = useState<string>("Checking session...");
-  const [query, setQuery] = useState<string>("");
-  const [suggestQuery, setSuggestQuery] = useState<string>("");
+  const [token, setToken] = useState("");
+  const [status, setStatus] = useState("Checking session...");
+  const [config, setConfig] = useState<AuthConfig>({});
+
+  const [view, setView] = useState<View>("books");
+  const [books, setBooks] = useState<string[]>([]);
+  const [selectedBook, setSelectedBook] = useState("");
+  const [chapters, setChapters] = useState<number[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState(0);
+  const [reading, setReading] = useState<ReadVerse[]>([]);
+
+  const [query, setQuery] = useState("");
+  const [suggestQuery, setSuggestQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>("");
-  const [config, setConfig] = useState<AuthConfig>({});
-  const [books, setBooks] = useState<string[]>([]);
-  const [chapters, setChapters] = useState<number[]>([]);
-  const [verses, setVerses] = useState<number[]>([]);
-  const [selectedBook, setSelectedBook] = useState<string>("");
-  const [selectedChapter, setSelectedChapter] = useState<string>("");
-  const [selectedVerse, setSelectedVerse] = useState<string>("all");
-  const [reading, setReading] = useState<ReadVerse[]>([]);
-  const [readingStatus, setReadingStatus] = useState<string>("Select a book to start.");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const hasToken = token.length > 0;
 
@@ -85,22 +87,17 @@ export default function App() {
       .then((data) => {
         if (data?.token) {
           setToken(data.token);
-          setStatus("Signed in. Token ready.");
+          setStatus("Signed in.");
         }
       })
       .catch(() => setStatus("Not signed in."));
   }, []);
 
   useEffect(() => {
-    if (!config.google_client_id) {
-      return;
-    }
-
+    if (!config.google_client_id) return;
     let cancelled = false;
     const initGoogle = () => {
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
       const google = (window as any).google;
       if (!google?.accounts?.id) {
         window.setTimeout(initGoogle, 300);
@@ -112,137 +109,61 @@ export default function App() {
           const resp = await fetch("/auth/google/token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id_token: response.credential,
-              scope: defaultScope
-            })
+            body: JSON.stringify({ id_token: response.credential, scope: defaultScope }),
           });
-          if (!resp.ok) {
-            setStatus("Login failed.");
-            return;
-          }
+          if (!resp.ok) { setStatus("Login failed."); return; }
           const data = await resp.json();
           setToken(data.token || "");
-          setStatus("Signed in. Token ready.");
-        }
+          setStatus("Signed in.");
+        },
       });
       google.accounts.id.renderButton(document.getElementById("google-button"), {
         theme: "outline",
-        size: "large"
+        size: "large",
       });
     };
-
     initGoogle();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [config.google_client_id]);
 
   useEffect(() => {
     fetch("/bible/list_books?json=true")
       .then((res) => res.json())
-      .then((data: BooksResponse) => {
-        const sorted = [...(data.Books || [])].sort((a, b) => a.localeCompare(b));
-        setBooks(sorted);
-      })
+      .then((data: BooksResponse) => setBooks(data.Books || []))
       .catch(() => setBooks([]));
   }, []);
 
-  useEffect(() => {
-    if (!selectedBook) {
-      setChapters([]);
-      setSelectedChapter("");
-      setSelectedVerse("all");
-      setReading([]);
-      setReadingStatus("Select a book to start.");
-      return;
-    }
-
-    setReadingStatus("Loading chapters...");
-    fetch(`/bible/list_chapters/${encodeURIComponent(selectedBook)}?json=true`)
+  const loadChapters = (book: string) => {
+    setSelectedBook(book);
+    setView("chapters");
+    fetch(`/bible/list_chapters/${encodeURIComponent(book)}?json=true`)
       .then((res) => res.json())
-      .then((data: ChaptersResponse) => {
-        setChapters(data.Chapters || []);
-        setSelectedChapter("");
-        setSelectedVerse("all");
-        setReading([]);
-        setReadingStatus(`Select a chapter in ${titleCase(data.Name || selectedBook)}.`);
-      })
-      .catch(() => {
-        setChapters([]);
-        setReading([]);
-        setReadingStatus("Failed to load chapters.");
-      });
-  }, [selectedBook]);
+      .then((data: ChaptersResponse) => setChapters(data.Chapters || []))
+      .catch(() => setChapters([]));
+  };
 
-  useEffect(() => {
-    if (!selectedBook || !selectedChapter) {
-      setVerses([]);
-      setReading([]);
-      return;
-    }
-
-    setReadingStatus("Loading chapter...");
-    fetch(`/bible/${encodeURIComponent(selectedBook)}/${encodeURIComponent(selectedChapter)}?json=true`)
+  const loadChapter = (chapter: number) => {
+    setSelectedChapter(chapter);
+    setView("reading");
+    fetch(`/bible/${encodeURIComponent(selectedBook)}/${chapter}?json=true`)
       .then((res) => res.json())
       .then((data: ChapterResponse) => {
-        const verseCount = data.Verses ? data.Verses.length : 0;
-        setVerses(Array.from({ length: verseCount }, (_, i) => i + 1));
-        setSelectedVerse("all");
-        setReading((data.Verses || []).map((text, index) => ({ number: index + 1, text })));
-        setReadingStatus("");
+        setReading((data.Verses || []).map((text, i) => ({ number: i + 1, text })));
       })
-      .catch(() => {
-        setVerses([]);
-        setReading([]);
-        setReadingStatus("Failed to load chapter.");
-      });
-  }, [selectedBook, selectedChapter]);
-
-  useEffect(() => {
-    if (!selectedBook || !selectedChapter || selectedVerse === "all") {
-      return;
-    }
-
-    setReadingStatus("Loading verse...");
-    fetch(
-      `/bible/${encodeURIComponent(selectedBook)}/${encodeURIComponent(selectedChapter)}/${encodeURIComponent(
-        selectedVerse
-      )}?json=true`
-    )
-      .then((res) => res.json())
-      .then((data: VerseResponse) => {
-        const parsed: ReadVerse[] = [];
-        (data.Verses || []).forEach((entry) => {
-          const [key, value] = Object.entries(entry)[0] || [];
-          const num = Number(key);
-          if (!Number.isNaN(num) && typeof value === "string") {
-            parsed.push({ number: num, text: value });
-          }
-        });
-        setReading(parsed);
-        setReadingStatus(parsed.length === 0 ? "Verse not found." : "");
-      })
-      .catch(() => {
-        setReading([]);
-        setReadingStatus("Failed to load verse.");
-      });
-  }, [selectedBook, selectedChapter, selectedVerse]);
+      .catch(() => setReading([]));
+  };
 
   const runSearch = async () => {
-    if (!query.trim()) {
-      return;
-    }
+    if (!query.trim()) return;
     setLoading(true);
     setError("");
     try {
       const resp = await fetch(`/bible/v2/search?q=${encodeURIComponent(query)}`);
-      if (!resp.ok) {
-        throw new Error("Search failed");
-      }
+      if (!resp.ok) throw new Error("Search failed");
       const data = await resp.json();
       setResults(data?.data?.results || []);
-    } catch (err) {
+      setView("search");
+    } catch {
       setError("Search failed. Check the API.");
     } finally {
       setLoading(false);
@@ -250,24 +171,15 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!suggestQuery.trim()) {
-      setSuggestions([]);
-      return;
-    }
-
+    if (!suggestQuery.trim()) { setSuggestions([]); return; }
     const timer = window.setTimeout(async () => {
       try {
         const resp = await fetch(`/bible/v2/suggest?q=${encodeURIComponent(suggestQuery)}`);
-        if (!resp.ok) {
-          return;
-        }
+        if (!resp.ok) return;
         const data = await resp.json();
         setSuggestions(data?.data?.suggestions || []);
-      } catch {
-        setSuggestions([]);
-      }
+      } catch { setSuggestions([]); }
     }, 200);
-
     return () => window.clearTimeout(timer);
   }, [suggestQuery]);
 
@@ -279,178 +191,122 @@ export default function App() {
 
   const safeHighlight = useMemo(() => {
     return (item: SearchResult) => {
-      if (!item.highlight || item.highlight.length === 0) {
-        return item.text;
-      }
-      return item.highlight[0]
-        .replace(/<em>/g, "<mark>")
-        .replace(/<\/em>/g, "</mark>");
+      if (!item.highlight || item.highlight.length === 0) return item.text;
+      return item.highlight[0].replace(/<em>/g, "<mark>").replace(/<\/em>/g, "</mark>");
     };
-  }, []);
-
-  const titleCase = useMemo(() => {
-    return (value: string) =>
-      value
-        .toLowerCase()
-        .split(" ")
-        .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
-        .join(" ");
   }, []);
 
   return (
     <div className="app">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Bible API v2</p>
-          <h1>Deep study search with OpenSearch</h1>
-          <p className="subhead">
-            Sign in, explore scripture, and tune your research with fast predictive search.
-          </p>
-        </div>
-        <div className="login-card">
-          <div id="google-button" className="google-button" />
-          <p className="status">{status}</p>
-          <div className="token">
-            {hasToken ? token : "Token will appear here after login."}
-          </div>
-          <button className="ghost" onClick={logout}>
-            Logout
-          </button>
-        </div>
-      </header>
+      <h1>Books of the Bible</h1>
 
-      <section className="panel">
-        <div className="panel-header">
-          <h2>Search</h2>
-          <p>Try: grace, covenant, kingdom, faith, mercy.</p>
-        </div>
-        <div className="fields">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search the text"
-          />
-          <button onClick={runSearch} disabled={loading}>
-            {loading ? "Searching..." : "Search"}
-          </button>
-        </div>
-        <div className="fields">
-          <input
-            value={suggestQuery}
-            onChange={(event) => setSuggestQuery(event.target.value)}
-            placeholder="Predictive suggestion"
-          />
-        </div>
+      {/* Login */}
+      <div className="login-section">
+        <div id="google-button" />
+        <p className="status">{status}</p>
+        {hasToken && <div className="token">{token}</div>}
+        {hasToken && <button onClick={logout}>Logout</button>}
+      </div>
+
+      {/* Search bar */}
+      <div className="search-bar">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") runSearch(); }}
+          placeholder="Search the text"
+        />
+        <button onClick={runSearch} disabled={loading}>
+          {loading ? "..." : "search"}
+        </button>
+      </div>
+      <div className="search-bar">
+        <input
+          value={suggestQuery}
+          onChange={(e) => setSuggestQuery(e.target.value)}
+          placeholder="Predictive suggestion"
+        />
+      </div>
+      {suggestions.length > 0 && (
         <div className="suggestions">
-          {suggestions.map((suggestion) => (
-            <button
-              key={`${suggestion.text}-${suggestion.score}`}
-              className="chip"
-              onClick={() => {
-                setQuery(suggestion.text);
-                runSearch();
-              }}
-            >
-              {suggestion.text}
+          {suggestions.map((s) => (
+            <button key={`${s.text}-${s.score}`} className="chip" onClick={() => { setQuery(s.text); runSearch(); }}>
+              {s.text}
             </button>
           ))}
         </div>
-        {error && <div className="error">{error}</div>}
-        <div className="results">
-          {results.length === 0 && !loading ? (
-            <div className="empty">No results yet.</div>
-          ) : null}
-          {results.map((item) => (
-            <article
-              key={`${item.book}-${item.chapter}-${item.verse}`}
-              className="result"
-            >
-              <div className="meta">
-                {item.book} {item.chapter}:{item.verse}
-              </div>
-              <div
-                className="text"
-                dangerouslySetInnerHTML={{ __html: safeHighlight(item) }}
-              />
-            </article>
+      )}
+      {error && <div className="error">{error}</div>}
+
+      {/* Navigation */}
+      {view !== "books" && (
+        <div className="nav-bar">
+          <button className="nav-btn" onClick={() => setView("books")}>Books Menu</button>
+          {view === "reading" && (
+            <button className="nav-btn" onClick={() => setView("chapters")}>{selectedBook}</button>
+          )}
+          {view === "reading" && selectedChapter > 1 && (
+            <button className="nav-btn" onClick={() => loadChapter(selectedChapter - 1)}>&lt;</button>
+          )}
+          {view === "reading" && selectedChapter < chapters.length && (
+            <button className="nav-btn" onClick={() => loadChapter(selectedChapter + 1)}>&gt;</button>
+          )}
+        </div>
+      )}
+
+      {/* Books list */}
+      {view === "books" &&
+        books.map((book) => (
+          <button key={book} className="block" onClick={() => loadChapters(book)}>
+            {book}
+          </button>
+        ))}
+
+      {/* Chapters list */}
+      {view === "chapters" && (
+        <>
+          <h2>{selectedBook}</h2>
+          {chapters.map((ch) => (
+            <button key={ch} className="block" onClick={() => loadChapter(ch)}>
+              {ch}
+            </button>
           ))}
-        </div>
-      </section>
+        </>
+      )}
 
-      <section className="panel">
-        <div className="panel-header">
-          <h2>Read</h2>
-          <p>Navigate by book, chapter, and verse.</p>
-        </div>
-        <div className="navigator">
-          <div className="select-row">
-            <label>
-              Book
-              <select
-                value={selectedBook}
-                onChange={(event) => setSelectedBook(event.target.value)}
-              >
-                <option value="">Select a book</option>
-                {books.map((book) => (
-                  <option key={book} value={book}>
-                    {titleCase(book)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Chapter
-              <select
-                value={selectedChapter}
-                onChange={(event) => setSelectedChapter(event.target.value)}
-                disabled={!selectedBook || chapters.length === 0}
-              >
-                <option value="">Select chapter</option>
-                {chapters.map((chapter) => (
-                  <option key={chapter} value={chapter}>
-                    {chapter}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Verse
-              <select
-                value={selectedVerse}
-                onChange={(event) => setSelectedVerse(event.target.value)}
-                disabled={!selectedChapter || verses.length === 0}
-              >
-                <option value="all">All verses</option>
-                {verses.map((verse) => (
-                  <option key={verse} value={verse}>
-                    {verse}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {readingStatus ? <div className="hint">{readingStatus}</div> : null}
-          <div className="read-results">
-            {reading.length === 0 && !readingStatus ? (
-              <div className="empty">No verses loaded yet.</div>
-            ) : null}
-            {reading.map((verse) => (
-              <article key={verse.number} className="result">
-                <div className="meta">
-                  {selectedBook ? titleCase(selectedBook) : ""} {selectedChapter}:
-                  {verse.number}
-                </div>
-                <div className="text">{verse.text}</div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Reading */}
+      {view === "reading" && (
+        <>
+          <h2>{selectedBook} {selectedChapter}</h2>
+          {reading.map((v) => (
+            <p key={v.number} className="verse-text">
+              <span className="verse-num">{v.number}</span> {v.text}
+            </p>
+          ))}
+        </>
+      )}
 
-      <footer className="footer">
-        <span>Powered by OpenSearch</span>
-        <span>API docs: /docs</span>
-      </footer>
+      {/* Search results */}
+      {view === "search" && (
+        <>
+          <h2>Search Results</h2>
+          {results.length === 0 && !loading && <div className="empty">No results.</div>}
+          {results.map((item) => (
+            <div key={`${item.book}-${item.chapter}-${item.verse}`} className="result">
+              <div className="meta">
+                <a href={`/bible/${item.book}/${item.chapter}/${item.verse}?json=false`}>
+                  {item.book} {item.chapter}:{item.verse}
+                </a>
+              </div>
+              <div className="text" dangerouslySetInnerHTML={{ __html: safeHighlight(item) }} />
+            </div>
+          ))}
+        </>
+      )}
+
+      <div className="footer">
+        <span>Powered by OpenSearch</span> | <span>API docs: <a href="/docs">/docs</a></span>
+      </div>
     </div>
   );
 }

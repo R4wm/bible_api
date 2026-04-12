@@ -22,6 +22,24 @@ import (
 
 const lastCardinalVerseNum = 31101
 
+// BooksCanonicalOrder is the 66 books of the Bible in their traditional order.
+var BooksCanonicalOrder = []string{
+	"GENESIS", "EXODUS", "LEVITICUS", "NUMBERS", "DEUTERONOMY",
+	"JOSHUA", "JUDGES", "RUTH", "1SAMUEL", "2SAMUEL",
+	"1KINGS", "2KINGS", "1CHRONICLES", "2CHRONICLES",
+	"EZRA", "NEHEMIAH", "ESTHER", "JOB", "PSALMS", "PROVERBS",
+	"ECCLESIASTES", "SONG OF SOLOMON", "ISAIAH", "JEREMIAH", "LAMENTATIONS",
+	"EZEKIEL", "DANIEL", "HOSEA", "JOEL", "AMOS",
+	"OBADIAH", "JONAH", "MICAH", "NAHUM", "HABAKKUK",
+	"ZEPHANIAH", "HAGGAI", "ZECHARIAH", "MALACHI",
+	"MATTHEW", "MARK", "LUKE", "JOHN", "ACTS",
+	"ROMANS", "1CORINTHIANS", "2CORINTHIANS", "GALATIANS", "EPHESIANS",
+	"PHILIPPIANS", "COLOSSIANS", "1THESSALONIANS", "2THESSALONIANS",
+	"1TIMOTHY", "2TIMOTHY", "TITUS", "PHILEMON", "HEBREWS",
+	"JAMES", "1PETER", "2PETER", "1JOHN", "2JOHN", "3JOHN",
+	"JUDE", "REVELATION",
+}
+
 var (
 	BookChapterLimit = map[string]int{
 		"GENESIS":         50,
@@ -165,6 +183,7 @@ type VerseData struct {
 
 func (app *App) SetupRouter() {
 	app.Router.HandleFunc("/bible/search", app.search)
+	app.Router.HandleFunc("/bible/suggest", app.suggestCompletion).Methods("GET")
 	app.Router.HandleFunc("/bible/random_verse", app.getRandomVerse)
 	app.Router.HandleFunc("/bible/list_books/", app.listBooks)
 	app.Router.HandleFunc("/bible/list_books", app.listBooks) // why do i have to be explicit about the post slash here..
@@ -188,11 +207,7 @@ func (app *App) SetupRouter() {
 }
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
-	// Extract books from BookChapterLimit map to maintain consistency
-	books := make([]string, 0, len(BookChapterLimit))
-	for book := range BookChapterLimit {
-		books = append(books, book)
-	}
+	books := BooksCanonicalOrder
 
 	// funcs generates the link needed for button
 	funcs := template.FuncMap{"createLink": func(b string) string {
@@ -378,11 +393,26 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
 		return
 	}
-	// Check for special characters in search string and return error if found
-	if matched, _ := regexp.MatchString(`[^\w\s]`, searchText[0]); matched {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Search string contains special characters which are not allowed"))
-		return
+	// Check if regex mode is enabled
+	useRegex := r.URL.Query().Get("regex") == "true"
+
+	// Check for special characters in search string and return error if found (skip in regex mode)
+	if !useRegex {
+		if matched, _ := regexp.MatchString(`[^\w\s]`, searchText[0]); matched {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Search string contains special characters which are not allowed"))
+			return
+		}
+	}
+
+	// Validate regex pattern if regex mode is enabled
+	if useRegex {
+		_, err := regexp.Compile("(?i)" + searchText[0])
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(fmt.Sprintf("Invalid regex pattern: %s", err)))
+			return
+		}
 	}
 
 	// Handle limit size
@@ -407,7 +437,12 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	matches.SearchString = searchText[0]
 
-	rows, err := app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where replace(replace(text, '[', ''), ']', '') like ? limit ?", "%"+searchText[0]+"%", limit)
+	var rows *sql.Rows
+	if useRegex {
+		rows, err = app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv")
+	} else {
+		rows, err = app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where replace(replace(text, '[', ''), ']', '') like ? limit ?", "%"+searchText[0]+"%", limit)
+	}
 	if err != nil {
 		w.Header().Set("Content-Type", "application/text")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -435,6 +470,16 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 			msg := fmt.Sprintf("Failed to scan query: %s\n", err)
 			w.Write([]byte(msg))
 			return
+		}
+
+		// In regex mode, skip verses that don't match the pattern
+		if useRegex {
+			if !re.MatchString(match.Text) {
+				continue
+			}
+			if overallCount["overall"] >= limit {
+				break
+			}
 		}
 
 		//////////////////////////////

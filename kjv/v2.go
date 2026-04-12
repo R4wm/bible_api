@@ -67,6 +67,7 @@ func (app *App) InitOpenSearch() {
 		return
 	}
 	if exists {
+		fmt.Printf("OpenSearch index '%s' already exists. If /bible/suggest returns poor results, reindex with: curl -X DELETE http://localhost:9200/%s && python3 scripts/index_kjv_to_opensearch.py\n", app.OpenSearchIndex, app.OpenSearchIndex)
 		return
 	}
 
@@ -209,6 +210,73 @@ func (app *App) suggestV2(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// suggestCompletion handles GET /bible/suggest?q=... using the OpenSearch
+// completion suggester on the text_suggest field. Returns a plain JSON array
+// of matching n-gram phrases. Always returns HTTP 200 with valid JSON (empty
+// array on any failure) since this is called on every keystroke from the
+// search bar across all pages.
+func (app *App) suggestCompletion(w http.ResponseWriter, r *http.Request) {
+	emptyResult := func() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("[]"))
+	}
+
+	query := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("q")))
+	if len(query) < 2 {
+		emptyResult()
+		return
+	}
+
+	if app.OpenSearchURL == "" || app.OpenSearchHTTP == nil {
+		emptyResult()
+		return
+	}
+
+	size := parseIntDefault(r.URL.Query().Get("n"), 8)
+	if size > 20 {
+		size = 20
+	}
+
+	body := map[string]interface{}{
+		"suggest": map[string]interface{}{
+			"verse-suggest": map[string]interface{}{
+				"prefix": query,
+				"completion": map[string]interface{}{
+					"field":           "text_suggest",
+					"size":            size,
+					"skip_duplicates": true,
+				},
+			},
+		},
+		"_source": false,
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	respBody, status, err := app.doOpenSearchRequest("POST", fmt.Sprintf("/%s/_search", app.OpenSearchIndex), bodyBytes)
+	if err != nil || status >= 400 {
+		emptyResult()
+		return
+	}
+
+	var parsed osSuggestResp
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		emptyResult()
+		return
+	}
+
+	suggestions := []string{}
+	if entries, ok := parsed.Suggest["verse-suggest"]; ok && len(entries) > 0 {
+		for _, opt := range entries[0].Options {
+			suggestions = append(suggestions, opt.Text)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(suggestions)
 }
 
 func (app *App) synonymsV2(w http.ResponseWriter, r *http.Request) {

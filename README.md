@@ -86,6 +86,17 @@ make index-kjv
 
 OpenSearch runs at `http://localhost:9200` and Dashboards at `http://localhost:5601`.
 
+### Reindexing OpenSearch
+
+If autocomplete (`/bible/suggest`) returns poor results after upgrading, delete and rebuild the OpenSearch index:
+
+```bash
+curl -X DELETE http://localhost:9200/kjv_v2
+python3 scripts/index_kjv_to_opensearch.py --db /data/kjv.db
+```
+
+This is required whenever `text_suggest` indexing logic changes in `scripts/index_kjv_to_opensearch.py`.
+
 ### Method 2: Manual Setup
 
 ```bash
@@ -160,6 +171,7 @@ To use public version of running API, visit the [bible_api](https://mintz5.duckd
 - `GET /bible/{book}/{chapter}/{verse}` - Get specific verse
 - `GET /bible/{book}/{chapter}/{start-end}` - Get verse range
 - `GET /bible/search?q={query}` - Search Bible text
+- `GET /bible/suggest?q={prefix}` - Autocomplete suggestions (OpenSearch)
 - `GET /bible/random_verse` - Get random verse
 
 ### v2 (OpenSearch)

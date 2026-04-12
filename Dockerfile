@@ -16,6 +16,9 @@ FROM golang:latest AS build
 RUN mkdir -p /go/src/bible_api
 WORKDIR /go/src/bible_api
 
+COPY go.mod go.sum /go/src/bible_api/
+RUN go mod download
+
 COPY . /go/src/bible_api
 COPY --from=ui /ui/dist /go/src/bible_api/web/dist
 
@@ -23,7 +26,6 @@ ENV CGO_ENABLED=1
 ENV GOOS=linux
 
 RUN go build -o /bible_api ./cmd/bible_api.go
-RUN /bible_api -createDB
 
 ################
 # WHEN IN PROD #
@@ -36,10 +38,7 @@ EXPOSE 8000
 ENV REDIS_ADDR=redis:6379
 ENV REDIS_PASSWORD=
 
-# COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-# COPY --from=build /go/src/bible_api/data/kjv.db /kjv.db
-# COPY --from=build /go/src/bible_api /bible_api
-CMD ["/bible_api", "-dbPath", "/tmp/kjv.db"]
+CMD sh -c '/bible_api -createDB -dbPath /data/kjv.db; /bible_api -dbPath /data/kjv.db'
 
 ################
 # WHEN TESTING #

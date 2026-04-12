@@ -2,11 +2,34 @@
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 import urllib.request
 
 DEFAULT_INDEX = "kjv_v2"
+
+
+def extract_ngrams(text, max_n=4):
+    """Extract 1-to-max_n word n-grams from verse text for autocomplete.
+
+    Tokenization rules:
+    - Strip KJV italic markers: [ ]
+    - Strip punctuation: : ; , . ! ? ' " ( )
+    - Hyphens become spaces: well-beloved -> "well beloved" (two tokens)
+    - Em dashes become spaces
+    - Collapse whitespace, lowercase
+    - Discard tokens that are purely numeric
+    - Keep single-character tokens (a, I) for natural phrases like "I am"
+    """
+    clean = re.sub(r"[\[\]:;,.!?'\"()\u2014\-]", " ", text).lower()
+    clean = re.sub(r"\s+", " ", clean).strip()
+    words = [w for w in clean.split() if not w.isdigit()]
+    ngrams = set()
+    for n in range(1, min(max_n + 1, len(words) + 1)):
+        for i in range(len(words) - n + 1):
+            ngrams.add(" ".join(words[i : i + n]))
+    return sorted(ngrams)
 
 
 def http_request(method, url, body=None, headers=None):
@@ -91,7 +114,7 @@ def bulk_index(base_url, index_name, rows, batch_size):
             "chapter": row[1],
             "verse": row[2],
             "text": row[3],
-            "text_suggest": row[3],
+            "text_suggest": extract_ngrams(row[3]),
             "ordinal_verse": row[4],
             "ordinal_book": row[5],
             "testament": row[6],
