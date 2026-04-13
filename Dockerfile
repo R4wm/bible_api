@@ -38,7 +38,7 @@ EXPOSE 8000
 ENV REDIS_ADDR=redis:6379
 ENV REDIS_PASSWORD=
 
-CMD sh -c '/bible_api -createDB -dbPath /data/kjv.db; /bible_api -dbPath /data/kjv.db'
+CMD ["/bible_api"]
 
 ################
 # WHEN TESTING #

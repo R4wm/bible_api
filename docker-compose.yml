@@ -19,6 +19,12 @@ services:
     volumes:
       - opensearch_data:/usr/share/opensearch/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   opensearch_dashboards:
     image: opensearchproject/opensearch-dashboards:2.13.0
@@ -29,7 +35,8 @@ services:
     ports:
       - "5601:5601"
     depends_on:
-      - opensearch
+      opensearch:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -61,13 +68,13 @@ services:
       - GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com
       - JWT_SECRET=change_me
       - INTERNAL_TOKEN_SECRET=change_me
-    volumes:
-      - bible_db:/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   opensearch_data:
   redis_data:
-  bible_db:

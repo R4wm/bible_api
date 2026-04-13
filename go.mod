@@ -6,9 +6,6 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/gorilla/mux v1.8.0
-	github.com/mattn/go-sqlite3 v1.14.16
-	github.com/r4wm/mintz5 v0.0.0-20200913071705-f9eb5b929605
-	github.com/r4wm/sqlite3_kjv v0.0.0-20201005151805-2fa1bb49fb45
 	github.com/sirupsen/logrus v1.9.3
 	google.golang.org/api v0.266.0
 )
@@ -43,5 +40,3 @@ require (
 	google.golang.org/grpc v1.78.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-exclude github.com/mattn/go-sqlite3 v1.10.0

@@ -122,7 +122,7 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, took, total, err := parseSearchResponse(respBody)
+	results, took, total, bookCounts, err := parseSearchResponse(respBody)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "Failed to parse search response")
 		return
@@ -138,7 +138,8 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 			"took_ms": took,
 		},
 		Data: map[string]interface{}{
-			"results": results,
+			"results":     results,
+			"book_counts": bookCounts,
 		},
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -235,9 +236,9 @@ func (app *App) suggestCompletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	size := parseIntDefault(r.URL.Query().Get("n"), 8)
-	if size > 20 {
-		size = 20
+	size := parseIntDefault(r.URL.Query().Get("n"), 20)
+	if size > 50 {
+		size = 50
 	}
 
 	body := map[string]interface{}{
@@ -391,6 +392,14 @@ func buildSearchBody(query string, size, from int, filters map[string]string) ma
 				"text": map[string]interface{}{},
 			},
 		},
+		"aggs": map[string]interface{}{
+			"by_book": map[string]interface{}{
+				"terms": map[string]interface{}{
+					"field": "book",
+					"size":  66,
+				},
+			},
+		},
 	}
 }
 
@@ -410,12 +419,20 @@ type osSearchResp struct {
 			Highlight map[string][]string `json:"highlight"`
 		} `json:"hits"`
 	} `json:"hits"`
+	Aggregations struct {
+		ByBook struct {
+			Buckets []struct {
+				Key      string `json:"key"`
+				DocCount int    `json:"doc_count"`
+			} `json:"buckets"`
+		} `json:"by_book"`
+	} `json:"aggregations"`
 }
 
-func parseSearchResponse(body []byte) ([]v2SearchResult, int, int, error) {
+func parseSearchResponse(body []byte) ([]v2SearchResult, int, int, map[string]int, error) {
 	var resp osSearchResp
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, 0, 0, err
+		return nil, 0, 0, nil, err
 	}
 	results := make([]v2SearchResult, 0, len(resp.Hits.Hits))
 	for _, hit := range resp.Hits.Hits {
@@ -430,7 +447,11 @@ func parseSearchResponse(body []byte) ([]v2SearchResult, int, int, error) {
 		}
 		results = append(results, item)
 	}
-	return results, resp.Took, resp.Hits.Total.Value, nil
+	bookCounts := make(map[string]int, len(resp.Aggregations.ByBook.Buckets))
+	for _, bucket := range resp.Aggregations.ByBook.Buckets {
+		bookCounts[bucket.Key] = bucket.DocCount
+	}
+	return results, resp.Took, resp.Hits.Total.Value, bookCounts, nil
 }
 
 type osSuggestResp struct {
@@ -754,4 +775,330 @@ func muxVar(r *http.Request, key string) string {
 		return v
 	}
 	return ""
+}
+
+// PreloadVerses fetches all verses from OpenSearch using the scroll API
+// and populates AllVerses and FlatVerses on the App struct.
+// These fields are immutable after this call — safe for concurrent reads.
+func (app *App) PreloadVerses() error {
+	if err := app.ensureOpenSearchReady(); err != nil {
+		return err
+	}
+
+	body := map[string]interface{}{
+		"query":   map[string]interface{}{"match_all": map[string]interface{}{}},
+		"sort":    []interface{}{map[string]interface{}{"ordinal_verse": "asc"}},
+		"size":    5000,
+		"_source": []string{"book", "chapter", "verse", "text"},
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	// Initial scroll request
+	respBody, status, err := app.doOpenSearchRequest("POST", fmt.Sprintf("/%s/_search?scroll=1m", app.OpenSearchIndex), bodyBytes)
+	if err != nil {
+		return fmt.Errorf("scroll init failed: %w", err)
+	}
+	if status >= 400 {
+		return fmt.Errorf("scroll init error: %s", string(respBody))
+	}
+
+	type scrollResponse struct {
+		ScrollID string `json:"_scroll_id"`
+		Hits     struct {
+			Hits []struct {
+				Source struct {
+					Book    string `json:"book"`
+					Chapter int    `json:"chapter"`
+					Verse   int    `json:"verse"`
+					Text    string `json:"text"`
+				} `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+
+	var allVerses []Verse
+	versesMap := make(map[string]map[int][]Verse)
+
+	addHits := func(resp *scrollResponse) {
+		for _, hit := range resp.Hits.Hits {
+			v := Verse{
+				Book:    hit.Source.Book,
+				Chapter: hit.Source.Chapter,
+				Verse:   hit.Source.Verse,
+				Text:    hit.Source.Text,
+			}
+			allVerses = append(allVerses, v)
+			if versesMap[v.Book] == nil {
+				versesMap[v.Book] = make(map[int][]Verse)
+			}
+			versesMap[v.Book][v.Chapter] = append(versesMap[v.Book][v.Chapter], v)
+		}
+	}
+
+	// Parse initial response
+	var parsed scrollResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return fmt.Errorf("scroll parse failed: %w", err)
+	}
+	addHits(&parsed)
+	scrollID := parsed.ScrollID
+
+	// Follow-up scroll requests
+	for len(parsed.Hits.Hits) > 0 {
+		scrollBody, _ := json.Marshal(map[string]interface{}{
+			"scroll":    "1m",
+			"scroll_id": scrollID,
+		})
+		respBody, status, err = app.doOpenSearchRequest("POST", "/_search/scroll", scrollBody)
+		if err != nil || status >= 400 {
+			break
+		}
+		parsed = scrollResponse{}
+		if err := json.Unmarshal(respBody, &parsed); err != nil {
+			break
+		}
+		if len(parsed.Hits.Hits) == 0 {
+			break
+		}
+		addHits(&parsed)
+		scrollID = parsed.ScrollID
+	}
+
+	// Clear scroll
+	clearBody, _ := json.Marshal(map[string]interface{}{"scroll_id": scrollID})
+	app.doOpenSearchRequest("DELETE", "/_search/scroll", clearBody)
+
+	if len(allVerses) == 0 {
+		return fmt.Errorf("no verses found in index %s", app.OpenSearchIndex)
+	}
+
+	app.AllVerses = versesMap
+	app.FlatVerses = allVerses
+	return nil
+}
+
+// OpenSearch data access helpers for v1 handler migration
+
+type osHitsResponse struct {
+	Hits struct {
+		Total struct {
+			Value int `json:"value"`
+		} `json:"total"`
+		Hits []struct {
+			Source struct {
+				Book        string `json:"book"`
+				Chapter     int    `json:"chapter"`
+				Verse       int    `json:"verse"`
+				Text        string `json:"text"`
+				OrdinalBook int    `json:"ordinal_book"`
+			} `json:"_source"`
+		} `json:"hits"`
+	} `json:"hits"`
+	Aggregations struct {
+		ByBook struct {
+			Buckets []struct {
+				Key      string `json:"key"`
+				DocCount int    `json:"doc_count"`
+			} `json:"buckets"`
+		} `json:"by_book"`
+	} `json:"aggregations"`
+}
+
+func (app *App) osGetChapter(book string, chapter int) ([]Verse, error) {
+	if err := app.ensureOpenSearchReady(); err != nil {
+		return nil, err
+	}
+
+	body := map[string]interface{}{
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"filter": []interface{}{
+					map[string]interface{}{"term": map[string]interface{}{"book": book}},
+					map[string]interface{}{"term": map[string]interface{}{"chapter": chapter}},
+				},
+			},
+		},
+		"sort":    []interface{}{map[string]interface{}{"verse": "asc"}},
+		"size":    200,
+		"_source": []string{"verse", "text"},
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	respBody, status, err := app.doOpenSearchRequest("POST", fmt.Sprintf("/%s/_search", app.OpenSearchIndex), bodyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("opensearch request failed: %w", err)
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("opensearch error: %s", string(respBody))
+	}
+
+	var parsed osHitsResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse opensearch response: %w", err)
+	}
+
+	verses := make([]Verse, 0, len(parsed.Hits.Hits))
+	for _, hit := range parsed.Hits.Hits {
+		verses = append(verses, Verse{
+			Book:    hit.Source.Book,
+			Chapter: hit.Source.Chapter,
+			Verse:   hit.Source.Verse,
+			Text:    hit.Source.Text,
+		})
+	}
+	return verses, nil
+}
+
+func (app *App) osGetVerses(book string, chapter int, verseNums []int) ([]Verse, error) {
+	if err := app.ensureOpenSearchReady(); err != nil {
+		return nil, err
+	}
+
+	body := map[string]interface{}{
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"filter": []interface{}{
+					map[string]interface{}{"term": map[string]interface{}{"book": book}},
+					map[string]interface{}{"term": map[string]interface{}{"chapter": chapter}},
+					map[string]interface{}{"terms": map[string]interface{}{"verse": verseNums}},
+				},
+			},
+		},
+		"sort":    []interface{}{map[string]interface{}{"verse": "asc"}},
+		"size":    200,
+		"_source": []string{"verse", "text"},
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	respBody, status, err := app.doOpenSearchRequest("POST", fmt.Sprintf("/%s/_search", app.OpenSearchIndex), bodyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("opensearch request failed: %w", err)
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("opensearch error: %s", string(respBody))
+	}
+
+	var parsed osHitsResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse opensearch response: %w", err)
+	}
+
+	verses := make([]Verse, 0, len(parsed.Hits.Hits))
+	for _, hit := range parsed.Hits.Hits {
+		verses = append(verses, Verse{
+			Book:    hit.Source.Book,
+			Chapter: hit.Source.Chapter,
+			Verse:   hit.Source.Verse,
+			Text:    hit.Source.Text,
+		})
+	}
+	return verses, nil
+}
+
+func (app *App) osGetRandomVerse() (Verse, error) {
+	if err := app.ensureOpenSearchReady(); err != nil {
+		return Verse{}, err
+	}
+
+	body := map[string]interface{}{
+		"query": map[string]interface{}{
+			"function_score": map[string]interface{}{
+				"query":        map[string]interface{}{"match_all": map[string]interface{}{}},
+				"random_score": map[string]interface{}{},
+			},
+		},
+		"size":    1,
+		"_source": []string{"book", "chapter", "verse", "text"},
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	respBody, status, err := app.doOpenSearchRequest("POST", fmt.Sprintf("/%s/_search", app.OpenSearchIndex), bodyBytes)
+	if err != nil {
+		return Verse{}, fmt.Errorf("opensearch request failed: %w", err)
+	}
+	if status >= 400 {
+		return Verse{}, fmt.Errorf("opensearch error: %s", string(respBody))
+	}
+
+	var parsed osHitsResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return Verse{}, fmt.Errorf("failed to parse opensearch response: %w", err)
+	}
+
+	if len(parsed.Hits.Hits) == 0 {
+		return Verse{}, fmt.Errorf("no verses found")
+	}
+
+	hit := parsed.Hits.Hits[0]
+	return Verse{
+		Book:    hit.Source.Book,
+		Chapter: hit.Source.Chapter,
+		Verse:   hit.Source.Verse,
+		Text:    hit.Source.Text,
+	}, nil
+}
+
+func (app *App) osSearch(query string, limit int) ([]Verse, [66]int, error) {
+	if err := app.ensureOpenSearchReady(); err != nil {
+		return nil, [66]int{}, err
+	}
+
+	body := map[string]interface{}{
+		"query": map[string]interface{}{
+			"match": map[string]interface{}{
+				"text": map[string]interface{}{
+					"query": query,
+				},
+			},
+		},
+		"size":             limit,
+		"track_total_hits": true,
+		"_source":          []string{"book", "chapter", "verse", "text", "ordinal_book"},
+		"aggs": map[string]interface{}{
+			"by_book": map[string]interface{}{
+				"terms": map[string]interface{}{
+					"field": "book",
+					"size":  66,
+				},
+			},
+		},
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	respBody, status, err := app.doOpenSearchRequest("POST", fmt.Sprintf("/%s/_search", app.OpenSearchIndex), bodyBytes)
+	if err != nil {
+		return nil, [66]int{}, fmt.Errorf("opensearch request failed: %w", err)
+	}
+	if status >= 400 {
+		return nil, [66]int{}, fmt.Errorf("opensearch error: %s", string(respBody))
+	}
+
+	var parsed osHitsResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, [66]int{}, fmt.Errorf("failed to parse opensearch response: %w", err)
+	}
+
+	verses := make([]Verse, 0, len(parsed.Hits.Hits))
+	for _, hit := range parsed.Hits.Hits {
+		verses = append(verses, Verse{
+			Book:    hit.Source.Book,
+			Chapter: hit.Source.Chapter,
+			Verse:   hit.Source.Verse,
+			Text:    hit.Source.Text,
+		})
+	}
+
+	// Build per-book graph counter from aggregation
+	var graphCounter [66]int
+	bookToIndex := make(map[string]int, 66)
+	for i, name := range BooksCanonicalOrder {
+		bookToIndex[name] = i
+	}
+	for _, bucket := range parsed.Aggregations.ByBook.Buckets {
+		if idx, ok := bookToIndex[bucket.Key]; ok {
+			graphCounter[idx] = bucket.DocCount
+		}
+	}
+
+	return verses, graphCounter, nil
 }

@@ -11,22 +11,118 @@ body {
 .app {
   max-width: 800px;
   margin: 0 auto;
-  padding: 10px;
+  padding: 0 10px 10px;
 }
 
 h1, h2 {
   text-align: center;
 }
 
-/* Full-width green buttons matching the Go templates */
+/* Top bar: hamburger + search */
+.top-bar {
+  display: flex;
+  align-items: center;
+  background-color: #c3dfef;
+  padding: 0;
+  margin: 0 -10px;
+}
+
+.hamburger {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  font-size: 24px;
+  padding: 10px 14px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.hamburger:hover {
+  background: rgba(0,0,0,0.1);
+}
+
+.top-bar .search-bar {
+  flex: 1;
+  margin: 0;
+  padding: 10px 10px 10px 0;
+}
+
+/* Menu panel */
+.menu-panel {
+  background: #c3dfef;
+  border-bottom: 2px solid #0076a3;
+  margin: 0 -10px;
+}
+
+.menu-panel a,
+.menu-panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+  color: #333;
+  text-decoration: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.menu-panel a:hover,
+.menu-panel button:hover {
+  background: rgba(0,0,0,0.1);
+}
+
+/* Font classes */
+.font-blackletter { font-family: 'UnifrakturMaguntia', serif; font-size: 120%; }
+.font-renaissance { font-family: 'IM Fell English', serif; }
+.font-serif { font-family: Georgia, 'Times New Roman', serif; }
+
+/* Settings panel */
+.settings-panel {
+  background: #f5f5f5;
+  border-bottom: 2px solid #0076a3;
+  padding: 12px 16px;
+  margin: 0 -10px;
+}
+
+.settings-panel label {
+  display: block;
+  padding: 6px 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.settings-panel input[type="radio"] {
+  margin-right: 8px;
+}
+
+/* Grid layout for books and chapters */
+.books-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.chapters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 4px;
+  padding: 8px 0;
+}
+
+/* Compact green buttons */
 .block {
   display: block;
   width: 100%;
   border: none;
   background-color: #4CAF50;
   color: white;
-  padding: 14px 28px;
-  font-size: 16px;
+  padding: 10px 8px;
+  font-size: 13px;
   cursor: pointer;
   text-align: center;
   margin-bottom: 4px;

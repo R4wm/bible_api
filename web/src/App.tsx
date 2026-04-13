@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const defaultScope = "synonyms:write";
 
@@ -65,8 +65,48 @@ export default function App() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [font, setFont] = useState(() => localStorage.getItem("bible-font") || "default");
 
   const hasToken = token.length > 0;
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  const fontClasses = ["font-blackletter", "font-renaissance", "font-serif"];
+
+  // Apply font class on mount and when font changes
+  useEffect(() => {
+    fontClasses.forEach((c) => document.body.classList.remove(c));
+    if (font !== "default") document.body.classList.add("font-" + font);
+    localStorage.setItem("bible-font", font);
+  }, [font]);
+
+  // Close menu on Escape and outside click
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setMenuOpen(false); setSettingsOpen(false); }
+    };
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        menuRef.current && !menuRef.current.contains(target) &&
+        menuBtnRef.current && !menuBtnRef.current.contains(target) &&
+        (!settingsRef.current || !settingsRef.current.contains(target))
+      ) {
+        setMenuOpen(false);
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("click", onClick);
+    };
+  }, []);
 
   useEffect(() => {
     fetch("/auth/config")
@@ -198,7 +238,65 @@ export default function App() {
 
   return (
     <div className="app">
-      <h1>Books of the Bible</h1>
+      {/* Top bar: hamburger + search */}
+      <div className="top-bar">
+        <button
+          className="hamburger"
+          ref={menuBtnRef}
+          aria-label="Open navigation menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          &#9776;
+        </button>
+        <div className="search-bar">
+          <input
+            ref={searchInputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") runSearch(); }}
+            placeholder="Search the text"
+          />
+          <button onClick={runSearch} disabled={loading}>
+            {loading ? "..." : "search"}
+          </button>
+        </div>
+      </div>
+
+      {/* Menu panel */}
+      {menuOpen && (
+        <div className="menu-panel" ref={menuRef}>
+          <button onClick={() => { setView("books"); setMenuOpen(false); }}>Books</button>
+          <button onClick={() => { setView("search"); searchInputRef.current?.focus(); setMenuOpen(false); }}>Search</button>
+          <a href="/docs">Docs</a>
+          <button onClick={() => setSettingsOpen(!settingsOpen)}>Settings</button>
+          <a href="/bible/list_books">Open Classic</a>
+        </div>
+      )}
+
+      {/* Settings panel */}
+      {settingsOpen && (
+        <div className="settings-panel open" ref={settingsRef}>
+          <strong>Font</strong>
+          {[
+            { value: "default", label: "Default" },
+            { value: "blackletter", label: "Blackletter (Gothic)" },
+            { value: "renaissance", label: "Renaissance" },
+            { value: "serif", label: "Classic Serif" },
+          ].map((opt) => (
+            <label key={opt.value}>
+              <input
+                type="radio"
+                name="font-choice"
+                value={opt.value}
+                checked={font === opt.value}
+                onChange={() => setFont(opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      )}
 
       {/* Login */}
       <div className="login-section">
@@ -208,18 +306,7 @@ export default function App() {
         {hasToken && <button onClick={logout}>Logout</button>}
       </div>
 
-      {/* Search bar */}
-      <div className="search-bar">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") runSearch(); }}
-          placeholder="Search the text"
-        />
-        <button onClick={runSearch} disabled={loading}>
-          {loading ? "..." : "search"}
-        </button>
-      </div>
+      {/* Suggest bar */}
       <div className="search-bar">
         <input
           value={suggestQuery}
@@ -255,22 +342,27 @@ export default function App() {
       )}
 
       {/* Books list */}
-      {view === "books" &&
-        books.map((book) => (
-          <button key={book} className="block" onClick={() => loadChapters(book)}>
-            {book}
-          </button>
-        ))}
+      {view === "books" && (
+        <div className="books-grid">
+          {books.map((book) => (
+            <button key={book} className="block" onClick={() => loadChapters(book)}>
+              {book}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Chapters list */}
       {view === "chapters" && (
         <>
           <h2>{selectedBook}</h2>
-          {chapters.map((ch) => (
-            <button key={ch} className="block" onClick={() => loadChapter(ch)}>
-              {ch}
-            </button>
-          ))}
+          <div className="chapters-grid">
+            {chapters.map((ch) => (
+              <button key={ch} className="block" onClick={() => loadChapter(ch)}>
+                {ch}
+              </button>
+            ))}
+          </div>
         </>
       )}
 

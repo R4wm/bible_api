@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -15,8 +13,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/r4wm/bible_api/kjv"
 	"github.com/r4wm/bible_api/middleware"
-	"github.com/r4wm/mintz5/db"
-	"github.com/r4wm/sqlite3_kjv"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -27,43 +23,25 @@ func removeTrailingSlash(next http.Handler) http.Handler {
 	})
 }
 
-func main() {
+func waitForOpenSearch(url string, client *http.Client, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	healthURL := strings.TrimRight(url, "/") + "/_cluster/health?wait_for_status=yellow&timeout=5s"
 
-	debug.PrintStack()
-	dbPath := flag.String("dbPath", "/tmp/kjv.db", "Path to kjv database.")
-	createDB := flag.Bool("createDB", false, "Create the kjv database.")
-	flag.Parse()
-
-	// Create the DB if asked
-	if *createDB == true {
-		path, err := os.Stat(*dbPath)
-		if os.IsNotExist(err) {
-			_, err := sqlite3_kjv.CreateKJVDB(*dbPath)
-
-			if err != nil {
-				panic(err)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(healthURL)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
 			}
-
-			log.Infof("Created database %v", path)
-			return // dont run it else docker image build will never finish
 		}
+		log.Infof("Waiting for OpenSearch at %s...", url)
+		time.Sleep(2 * time.Second)
 	}
+	return fmt.Errorf("opensearch not ready at %s after %v", url, timeout)
+}
 
-	// We didnt create a database, lets go
-	// Check the db path exists
-	_, err := os.Stat(*dbPath)
-	if os.IsNotExist(err) {
-		log.Errorf("database path does not exist: %s", *dbPath)
-		fmt.Println("Provide dbPath else use createDB argument")
-		flag.PrintDefaults()
-		os.Exit(1)
-	}
-	// Create database connection
-	database, err := db.CreateDatabase(*dbPath)
-	if err != nil {
-		panic(err)
-	}
-	log.Infof("Database connection OK.")
+func main() {
 
 	// Initialize Redis client
 	redisAddr := os.Getenv("REDIS_ADDR")
@@ -107,9 +85,8 @@ func main() {
 	}).Methods("GET")
 
 	app := kjv.App{
-		Router:   router,
-		Database: database,
-		Redis:    rdb,
+		Router: router,
+		Redis:  rdb,
 	}
 	app.OpenSearchURL = getEnvOrDefault("OPENSEARCH_URL", "http://localhost:9200")
 	app.OpenSearchIndex = getEnvOrDefault("OPENSEARCH_INDEX", "kjv_v2")
@@ -127,8 +104,24 @@ func main() {
 	app.GoogleClientID = getEnvOrDefault("GOOGLE_CLIENT_ID", "1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com")
 	app.InternalTokenSecret = os.Getenv("INTERNAL_TOKEN_SECRET")
 	app.NormalizeAuthConfig()
+
+	// Wait for OpenSearch to be ready before starting
+	if app.OpenSearchURL != "" {
+		if err := waitForOpenSearch(app.OpenSearchURL, app.OpenSearchHTTP, 30*time.Second); err != nil {
+			log.Fatalf("OpenSearch readiness check failed: %v", err)
+		}
+		log.Info("OpenSearch is ready")
+	}
+
 	app.SetupRouter()
 	app.InitOpenSearch()
+
+	if err := app.PreloadVerses(); err != nil {
+		log.Warnf("Failed to preload verses: %v — content endpoints will use live OpenSearch queries", err)
+	} else {
+		log.Infof("Preloaded %d verses into memory", len(app.FlatVerses))
+	}
+
 	port := ":8000"
 	log.Infof("Listening on %s\n", port)
 	// Serve

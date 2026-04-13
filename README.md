@@ -3,19 +3,25 @@
 ## Quick URLs (Local)
 
 - API base: `http://localhost:8000`
-- Search endpoint (example): `http://localhost:8000/bible/v2/search?q=genesis`
+- Book listing: `http://localhost:8000/bible/list_books`
+- Search: `http://localhost:8000/bible/search?q=grace`
+- Autocomplete: `http://localhost:8000/bible/suggest?q=gra`
+- Random verse: `http://localhost:8000/bible/random_verse`
 - Web UI: `http://localhost:8000/v2`
 - OpenSearch: `http://localhost:9200`
 - OpenSearch Dashboards: `http://localhost:5601`
+- API docs: `http://localhost:8000/docs`
 
-> If search returns `lookup opensearch on 127.0.0.11:53: no such host`, the API container can’t resolve the `opensearch` service name. Start all services via `docker compose` so they share the same network.
+> If search returns `lookup opensearch on 127.0.0.11:53: no such host`, the API container can't resolve the `opensearch` service name. Start all services via `docker compose` so they share the same network.
 
 > OpenSearch 2.12+ requires an initial admin password. Set `OPENSEARCH_INITIAL_ADMIN_PASSWORD` in your environment before running `docker compose up`.
 
 - A raw high performance RESTful API written in Go
 - King James Version Pure Cambridge Text
 - No ads, No distractions, not ever.
-- **NEW**: Redis-based rate limiting for abuse prevention
+- Hamburger navigation menu on every page (Books, Search, Docs, Settings, cross-link to v2/classic)
+- Font settings: choose from Default, Blackletter (Gothic), Renaissance, or Classic Serif — persists via localStorage
+- All Bible text preloaded into memory at startup for instant reads (zero OpenSearch latency for chapter/verse/random)
 - Easy navigation
   - [Simple book listing and buttons choice](https://mintz5.duckdns.org/bible/list_books)
   - [Random Verse Generator](https://mintz5.duckdns.org/bible/random_verse)
@@ -25,89 +31,91 @@
   - Previous chapter button (if applicable)
   - Books link button in Chapter selection
   - [Supports verse ranges](https://mintz5.duckdns.org/bible/EPHESIANS/2/8-9)
-  - Search feature
+  - Search feature with per-book chart visualization
     - Example: `https://mintz5.duckdns.org/bible/search?q=heart`
+  - Predictive search bar on every page (autocomplete via OpenSearch)
 
-## ⚡ Features
+## Features
 
-### 📖 Bible Content
+### Bible Content
 
 - Complete King James Version
 - Book navigation with clickable chapters
-- Verse range support (e.g., `/bible/romans/5/1-5`)
-- Full-text search across all books
+- Verse range support (e.g., `/bible/ROMANS/5/1-5`)
+- Full-text search powered by OpenSearch with per-book match chart
+- Predictive autocomplete search bar on every page
+- Hamburger navigation menu on every page (Books, Search, Docs, Settings, cross-link between classic/v2)
+- Font settings with 4 choices: Default, Blackletter (Gothic), Renaissance, Classic Serif — saved in localStorage, persists across pages and sessions
+- All ~31k verses preloaded into memory at startup — chapter reads, verse lookups, and random verse are served from cache with zero network latency
 
-### 🛡️ Rate Limiting (NEW)
+### Architecture
+
+- **OpenSearch** — all Bible content reads, full-text search, autocomplete suggestions
+- **Redis** — rate limiting, session storage
+- No SQLite dependency. OpenSearch is the sole data source for Bible content.
+
+### Rate Limiting
 
 - **5 requests per second** per IP address
 - **1-minute blocking** when limit exceeded
 - Redis-based storage with automatic TTL cleanup
 - Rate limit headers in all responses
 - Admin endpoints for manual IP management
-- Comprehensive logging of rate limit events
 
-### 🔧 Technical Features
+## Quick Start
 
-- JSON and HTML response formats
-- RESTful API design
-- SQLite database backend
-- Redis for rate limiting
-- Docker support with docker-compose
-- Graceful error handling
-
-## 🚀 Quick Start
-
-### Method 1: Docker Compose (Recommended)
+### Docker Compose (Recommended)
 
 ```bash
 # Clone the repository
 git clone https://github.com/r4wm/bible_api.git
 cd bible_api
 
-# Start with Redis and Bible API
-docker-compose up -d
+# Set the required OpenSearch admin password
+export OPENSEARCH_INITIAL_ADMIN_PASSWORD=YourStrongPassword123!
 
-# API will be available at http://localhost:8000
+# Start all services (OpenSearch, Redis, Bible API)
+docker compose up -d
+
+# Verify the service is running
 curl "http://localhost:8000/health"
 ```
 
-### OpenSearch (Single Node)
+The bible_api service waits for OpenSearch to be healthy before starting. However, **Bible content endpoints (`/bible/*`) will return empty results until you index the data**. On first run:
 
 ```bash
-# Start OpenSearch and Dashboards
-make opensearch-up
+# Index the KJV data into OpenSearch (required before Bible endpoints work)
+python3 scripts/index_kjv_to_opensearch.py --url http://localhost:9200
 
-# Optional on some Linux hosts
-sudo sysctl -w vm.max_map_count=262144
-
-# Index the KJV DB into OpenSearch
-make index-kjv
+# Verify the index is working
+curl "http://localhost:8000/bible/GENESIS/1?json=true"
 ```
-
-OpenSearch runs at `http://localhost:9200` and Dashboards at `http://localhost:5601`.
 
 ### Reindexing OpenSearch
 
-If autocomplete (`/bible/suggest`) returns poor results after upgrading, delete and rebuild the OpenSearch index:
+If autocomplete (`/bible/suggest`) returns poor results after upgrading, or if you've updated the indexer script, delete and rebuild the index:
 
 ```bash
 curl -X DELETE http://localhost:9200/kjv_v2
-python3 scripts/index_kjv_to_opensearch.py --db /data/kjv.db
+python3 scripts/index_kjv_to_opensearch.py --url http://localhost:9200
 ```
 
 This is required whenever `text_suggest` indexing logic changes in `scripts/index_kjv_to_opensearch.py`.
 
-### Method 2: Manual Setup
+### Manual Setup
 
 ```bash
-# Start Redis
-redis-server
+# Ensure OpenSearch is running at localhost:9200
+# Ensure Redis is running at localhost:6379
 
-# Or use the convenience script
-./start_with_redis.sh
+# Build
+go build -o bible_api cmd/bible_api.go
+
+# Run
+./bible_api
 ```
 
-## 📊 Rate Limiting
+## Rate Limiting
 
 The API includes built-in rate limiting to prevent abuse:
 
@@ -137,16 +145,7 @@ POST /admin/block-ip
 DELETE /admin/unblock-ip/{ip}
 ```
 
-## 🧪 Testing
-
-### Test Rate Limiting
-
-```bash
-./test_rate_limit.sh      # Test rate limiting behavior
-./test_logging.sh         # Test with logging output
-```
-
-### Manual Testing
+## Testing
 
 ```bash
 # Test random verse
@@ -157,27 +156,37 @@ curl "http://localhost:8000/bible/search?q=love&json=true"
 
 # Test verse range
 curl "http://localhost:8000/bible/JOHN/3/16-17?json=true"
+
+# Test autocomplete
+curl "http://localhost:8000/bible/suggest?q=grace"
+
+# Test old English font mode (browser)
+# http://localhost:8000/bible/GENESIS/1?olde=true
+
+# Test rate limiting
+./test_rate_limit.sh
+./test_logging.sh
 ```
 
-To use public version of running API, visit the [bible_api](https://mintz5.duckdns.org/bible/list_books)
+To use the public version, visit the [bible_api](https://mintz5.duckdns.org/bible/list_books)
 
-## 📋 API Endpoints
+## API Endpoints
 
 ### Bible Content
 
-- `GET /bible/list_books` - List all Bible books
+- `GET /bible/list_books` - List all Bible books (66 books in canonical order)
 - `GET /bible/{book}` - List chapters in a book
 - `GET /bible/{book}/{chapter}` - Get all verses in a chapter
 - `GET /bible/{book}/{chapter}/{verse}` - Get specific verse
 - `GET /bible/{book}/{chapter}/{start-end}` - Get verse range
-- `GET /bible/search?q={query}` - Search Bible text
-- `GET /bible/suggest?q={prefix}` - Autocomplete suggestions (OpenSearch)
+- `GET /bible/search?q={query}` - Full-text search with per-book chart
+- `GET /bible/suggest?q={prefix}` - Autocomplete suggestions (n-gram completion)
 - `GET /bible/random_verse` - Get random verse
 
-### v2 (OpenSearch)
+### v2 (OpenSearch Direct)
 
-- `GET /bible/v2/search?q={query}` - OpenSearch full-text search
-- `GET /bible/v2/suggest?q={prefix}` - Predictive suggestions
+- `GET /bible/v2/search?q={query}` - OpenSearch full-text search (JSON)
+- `GET /bible/v2/suggest?q={prefix}` - Verse prefix suggestions (JSON)
 - `PUT /bible/v2/synonyms/{set}` - Replace synonym set (JWT required)
 - `POST /bible/v2/synonyms/{set}` - Append to synonym set (JWT required)
 - `DELETE /bible/v2/synonyms/{set}` - Remove from synonym set (JWT required)
@@ -193,7 +202,6 @@ To use public version of running API, visit the [bible_api](https://mintz5.duckd
 - `POST /auth/logout` - Clear session
 - `POST /admin/token` - Mint token with `X-Internal-Secret` (internal use)
 
-
 ### Admin (Rate Limiting)
 
 - `GET /admin/rate-limit/{ip}` - Check IP rate limit status
@@ -208,6 +216,9 @@ To use public version of running API, visit the [bible_api](https://mintz5.duckd
 
 - `?json=true` - Return JSON response instead of HTML
 - `?show_italics=true` - Show italicized text in Bible verses (where applicable)
+- `?n={limit}` - Limit number of results. Search defaults to 10000. Suggest defaults to 20 (max 50).
+
+Font selection is handled via the **Settings** menu (hamburger menu → Settings) and saved in the browser's localStorage — no URL parameter needed.
 
 **Examples:**
 
@@ -216,20 +227,19 @@ To use public version of running API, visit the [bible_api](https://mintz5.duckd
 curl "http://localhost:8000/bible/JOHN/3/16?json=true"
 
 # Get verse with italics shown
-curl "http://localhost:8000/bible/PSALM/23/1?show_italics=true"
+curl "http://localhost:8000/bible/PSALMS/23/1?show_italics=true"
 
 # Combine parameters
 curl "http://localhost:8000/bible/ROMANS/8/28?json=true&show_italics=true"
 ```
 
-## 🛠️ Development
+## Development
 
 ### Prerequisites
 
 - Go 1.20+
 - Redis server
-- SQLite3
-- OpenSearch 2.x (for v2 endpoints)
+- OpenSearch 2.x (required for all Bible content)
 
 ### Build from Source
 
@@ -240,11 +250,8 @@ go mod tidy
 # Build
 go build -o bible_api cmd/bible_api.go
 
-# Create database (first time only)
-./bible_api -createDB -dbPath ./data/kjv.db
-
-# Run
-./bible_api -dbPath ./data/kjv.db
+# Run (requires OpenSearch and Redis to be running)
+./bible_api
 ```
 
 ### UI (React)
@@ -268,8 +275,8 @@ Docker builds the UI automatically during image build.
 ### Environment Variables
 
 ```bash
-REDIS_ADDR=localhost:6379    # Redis server address
-REDIS_PASSWORD=              # Redis password (if any)
+REDIS_ADDR=localhost:6379
+REDIS_PASSWORD=
 OPENSEARCH_URL=http://localhost:9200
 OPENSEARCH_INDEX=kjv_v2
 OPENSEARCH_SYNONYMS_SET=kjv_synonyms
@@ -281,20 +288,10 @@ SESSION_TTL_SECONDS=3600
 SESSION_COOKIE_NAME=bible_api_session
 SESSION_COOKIE_SECURE=false
 INTERNAL_TOKEN_SECRET=change_me
-GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=your-google-client-id
 ```
 
-## TODO:
-
-- Swipe to next chapter
-- Expand OpenSearch features (filters, relevance tuning)
-- Detailed search analytics
-- Authentication for admin endpoints
-- Rate limiting per user (not just IP)
-- WebSocket support for real-time updates
-- Document OpenSearch DNS resolution errors (`getaddrinfo ENOTFOUND opensearch`) and how to fix by running all services via `docker compose` so they share the same network
-
-## 📚 Legacy Text Sources
+## Legacy Text Sources
 
 Legacy English plain-text bible files are stored in `assets/texts/`, one translation per directory.
 
@@ -334,47 +331,40 @@ Each translation directory (example: `assets/texts/asv/`) contains:
 - `scripts/import_to_opensearch.py` for OpenSearch ingestion
 - `scripts/verify_import.py` for checksum and import checks
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 bible_api/
 ├── cmd/
 │   └── bible_api.go          # Main application entry point
 ├── kjv/
-│   ├── kjv.go               # Core Bible API handlers
+│   ├── kjv.go               # Core Bible API handlers (OpenSearch-backed)
+│   ├── v2.go                # OpenSearch helpers, v2 endpoints, suggest
 │   ├── admin.go             # Admin endpoints for rate limiting
-│   └── templates.go         # HTML templates
+│   ├── auth.go              # Google OAuth + JWT auth
+│   ├── ui.go                # Static UI serving
+│   └── templates.go         # HTML templates with search bar
 ├── middleware/
 │   └── rate_limiter.go      # Redis-based rate limiting
 ├── assets/
-│   └── texts/
-│       ├── README.md
-│       ├── asv/
-│       ├── asvs/
-│       ├── bishops/
-│       ├── coverdale/
-│       ├── geneva/
-│       ├── kjv_strongs/
-│       ├── net/
-│       ├── tyndale/
-│       └── web/
-├── data/
-│   └── kjv.db              # SQLite Bible database
-├── docker-compose.yml       # Docker setup with Redis
+│   └── texts/               # Legacy plain-text Bible translations
+├── web/                      # React UI (served at /v2)
 ├── scripts/
-│   └── index_kjv_to_opensearch.py # Bulk index KJV DB into OpenSearch
-├── start_with_redis.sh     # Development startup script
-├── test_rate_limit.sh      # Rate limiting test script
-├── test_logging.sh         # Logging test script
-└── RATE_LIMITING.md        # Detailed rate limiting documentation
+│   └── index_kjv_to_opensearch.py  # Index Bible data into OpenSearch
+├── docker-compose.yml        # OpenSearch + Redis + Bible API
+├── Dockerfile
+├── start_with_redis.sh
+├── test_rate_limit.sh
+├── test_logging.sh
+└── RATE_LIMITING.md
 ```
 
-## 📖 Documentation
+## Documentation
 
 - [Rate Limiting Guide](RATE_LIMITING.md) - Detailed rate limiting documentation
-- [API Examples](#-testing) - Example API calls and responses
+- [API Examples](#testing) - Example API calls and responses
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -382,6 +372,6 @@ bible_api/
 4. Add tests if applicable
 5. Submit a pull request
 
-## 📜 License
+## License
 
 This project is open source. The King James Version text is in the public domain.

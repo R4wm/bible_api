@@ -1,67 +1,183 @@
 package kjv
 
 const (
-	searchBarCSS = `
-      #tfheader{
-      background-color:#c3dfef;
+	topBarCSS = `
+      .top-bar {
+      display: flex;
+      align-items: center;
+      background-color: #c3dfef;
+      padding: 0;
       }
-      #tfnewsearch{
-      float:right;
-      padding:20px;
+      .hamburger {
+      flex: 0 0 auto;
+      background: none;
+      border: none;
+      font-size: 24px;
+      padding: 10px 14px;
+      cursor: pointer;
+      line-height: 1;
       }
-      .tftextinput{
+      .hamburger:hover {
+      background: rgba(0,0,0,0.1);
+      }
+      #tfnewsearch {
+      display: flex;
+      flex: 1;
+      padding: 10px 10px 10px 0;
+      gap: 0;
+      }
+      .tftextinput {
+      flex: 1;
+      box-sizing: border-box;
       margin: 0;
       padding: 5px 15px;
       font-family: Arial, Helvetica, sans-serif;
-      font-size:14px;
-      border:1px solid #0076a3; border-right:0px;
-      border-top-left-radius: 5px 5px;
-      border-bottom-left-radius: 5px 5px;
+      font-size: 14px;
+      border: 1px solid #0076a3; border-right: 0px;
+      border-top-left-radius: 5px;
+      border-bottom-left-radius: 5px;
       }
       .tfbutton {
+      flex: 0 0 auto;
       margin: 0;
       padding: 5px 15px;
       font-family: Arial, Helvetica, sans-serif;
-      font-size:14px;
+      font-size: 14px;
       outline: none;
       cursor: pointer;
       text-align: center;
       text-decoration: none;
       color: #ffffff;
-      border: solid 1px #0076a3; border-right:0px;
+      border: solid 1px #0076a3; border-right: 0px;
       background: #0095cd;
       background: -webkit-gradient(linear, left top, left bottom, from(#00adee), to(#0078a5));
-      background: -moz-linear-gradient(top,  #00adee,  #0078a5);
-      border-top-right-radius: 5px 5px;
-      border-bottom-right-radius: 5px 5px;
+      background: -moz-linear-gradient(top, #00adee, #0078a5);
+      border-top-right-radius: 5px;
+      border-bottom-right-radius: 5px;
       }
       .tfbutton:hover {
       text-decoration: none;
       background: #007ead;
       background: -webkit-gradient(linear, left top, left bottom, from(#0095cc), to(#00678e));
-      background: -moz-linear-gradient(top,  #0095cc,  #00678e);
+      background: -moz-linear-gradient(top, #0095cc, #00678e);
       }
       .tfbutton::-moz-focus-inner {
       border: 0;
       }
-      .tfclear{
-      clear:both;
+      .menu-panel {
+      display: none;
+      background: #c3dfef;
+      border-bottom: 2px solid #0076a3;
       }
+      .menu-panel.open {
+      display: block;
+      }
+      .menu-panel a, .menu-panel button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 10px 16px;
+      border: none;
+      background: none;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 14px;
+      color: #333;
+      text-decoration: none;
+      cursor: pointer;
+      box-sizing: border-box;
+      }
+      .menu-panel a:hover, .menu-panel button:hover {
+      background: rgba(0,0,0,0.1);
+      }
+      .font-blackletter { font-family: 'UnifrakturMaguntia', serif; font-size: 120%; }
+      .font-renaissance { font-family: 'IM Fell English', serif; }
+      .font-serif { font-family: Georgia, 'Times New Roman', serif; }
+      .settings-panel { display: none; background: #f5f5f5; border-bottom: 2px solid #0076a3; padding: 12px 16px; }
+      .settings-panel.open { display: block; }
+      .settings-panel label { display: block; padding: 6px 0; cursor: pointer; font-size: 14px; }
+      .settings-panel input[type="radio"] { margin-right: 8px; }
 `
 
-	searchBarHTML = `
-    <div id="tfheader">
+	topBarHTML = `
+    <div class="top-bar">
+      <button class="hamburger" id="menu-toggle" aria-label="Open navigation menu" aria-expanded="false">&#9776;</button>
       <form id="tfnewsearch" method="get" action="/bible/search">
-        <input type="text" class="tftextinput" name="q" size="21" maxlength="120"
+        <input type="text" class="tftextinput" name="q" maxlength="120"
                list="search-suggestions" autocomplete="off"><datalist id="search-suggestions"></datalist><input type="submit" value="search" class="tfbutton">
       </form>
-      <div class="tfclear"></div>
+    </div>
+    <div class="menu-panel" id="menu-panel">
+      <a href="/bible/list_books">Books</a>
+      <button id="menu-search">Search</button>
+      <a href="/docs">Docs</a>
+      <button id="menu-settings">Settings</button>
+      <a href="/v2">Open v2</a>
+    </div>
+    <div class="settings-panel" id="settings-panel">
+      <strong>Font</strong>
+      <label><input type="radio" name="font-choice" value="default" checked> Default</label>
+      <label><input type="radio" name="font-choice" value="blackletter"> Blackletter (Gothic)</label>
+      <label><input type="radio" name="font-choice" value="renaissance"> Renaissance</label>
+      <label><input type="radio" name="font-choice" value="serif"> Classic Serif</label>
     </div>
     <script>
     (function() {
+      var btn = document.getElementById('menu-toggle');
+      var panel = document.getElementById('menu-panel');
       var input = document.querySelector('.tftextinput');
       var datalist = document.getElementById('search-suggestions');
       var timer;
+
+      // Menu toggle
+      btn.addEventListener('click', function() {
+        var open = panel.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open);
+      });
+      document.addEventListener('click', function(e) {
+        if (!btn.contains(e.target) && !panel.contains(e.target) &&
+            !document.getElementById('settings-panel').contains(e.target)) {
+          panel.classList.remove('open');
+          btn.setAttribute('aria-expanded', 'false');
+          document.getElementById('settings-panel').classList.remove('open');
+        }
+      });
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          panel.classList.remove('open');
+          btn.setAttribute('aria-expanded', 'false');
+          document.getElementById('settings-panel').classList.remove('open');
+        }
+      });
+
+      // Menu: Search — focus input
+      document.getElementById('menu-search').addEventListener('click', function() {
+        panel.classList.remove('open');
+        input.focus();
+      });
+
+      // Menu: Settings — toggle settings panel
+      document.getElementById('menu-settings').addEventListener('click', function() {
+        document.getElementById('settings-panel').classList.toggle('open');
+      });
+
+      // Font selection — persists in localStorage
+      var fontRadios = document.querySelectorAll('input[name="font-choice"]');
+      var fontClasses = ['font-blackletter', 'font-renaissance', 'font-serif'];
+      var savedFont = localStorage.getItem('bible-font') || 'default';
+
+      fontClasses.forEach(function(c) { document.body.classList.remove(c); });
+      if (savedFont !== 'default') document.body.classList.add('font-' + savedFont);
+
+      fontRadios.forEach(function(r) {
+        if (r.value === savedFont) r.checked = true;
+        r.addEventListener('change', function() {
+          fontClasses.forEach(function(c) { document.body.classList.remove(c); });
+          if (this.value !== 'default') document.body.classList.add('font-' + this.value);
+          localStorage.setItem('bible-font', this.value);
+        });
+      });
+
+      // Autocomplete
       input.addEventListener('input', function() {
         clearTimeout(timer);
         var val = input.value.trim();
@@ -89,15 +205,22 @@ const (
 <html>
    <head>
       <meta name="viewport" content="width=device-width, initial-scale=1">
+      <link href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=IM+Fell+English&display=swap" rel="stylesheet">
       <style>
+	 .books-grid {
+	 display: grid;
+	 grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+	 gap: 4px;
+	 padding: 8px;
+	 }
 	 .block {
 	 display: block;
 	 width: 100%;
 	 border: none;
 	 background-color: #4CAF50;
 	 color: white;
-	 padding: 14px 28px;
-	 font-size: 16px;
+	 padding: 10px 8px;
+	 font-size: 13px;
 	 cursor: pointer;
 	 text-align: center;
 	 }
@@ -105,15 +228,17 @@ const (
 	 background-color: #ddd;
 	 color: black;
 	 }
-` + searchBarCSS + `
+` + topBarCSS + `
       </style>
       <title>Books of the Bible</title>
    </head>
    <body style="background-color:{{ .Color }};">
-` + searchBarHTML + `
+` + topBarHTML + `
+      <div class="books-grid">
       {{ range $key, $value := .Books }}
-      <p><button class="block" onclick="window.location.href= '{{ createLink $value }}';" >{{ $value }}</button></p>
+      <button class="block" onclick="window.location.href= '{{ createLink $value }}';" >{{ $value }}</button>
       {{ end }}
+      </div>
    </body>
 </html>
 `
@@ -123,11 +248,11 @@ const (
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-` + searchBarCSS + `
+` + topBarCSS + `
     </style>
   </head>
   <body style="background-color:{{ .Color }};">
-` + searchBarHTML + `
+` + topBarHTML + `
     <h1>
       <center>
 	<a href={{.ChapterRef}}>{{ .Verse.Book }} {{ .Verse.Chapter }}</a> : {{ .Verse.Verse }}
@@ -169,11 +294,11 @@ const (
 .btn-group button:hover {
   background-color: #3e8e41;
 }
-` + searchBarCSS + `
+` + topBarCSS + `
   </style>
 </head>
   <body style="background-color:{{ .Color }};">
-` + searchBarHTML + `
+` + topBarHTML + `
     <h1><center><a href=../{{.BookName}}>{{ .BookName }}</a> {{ .Chapter }}</h1>
     {{ range $index, $results := .Verses }}
     <p><b><left><a href={{ verseLink $index }}> {{ add $index 1}}</a> {{ . }} </b></p>
@@ -219,11 +344,11 @@ const (
     .btn-group button:hover {
     background-color: #3e8e41;
     }
-` + searchBarCSS + `
+` + topBarCSS + `
   </style>
 </head>
   <body style="background-color:{{ .Color }};">
-` + searchBarHTML + `
+` + topBarHTML + `
     {{if .StartVerse}}<h1><center><a href=../{{.Chapter}}>{{ .BookName }} {{ .Chapter }}</a>:{{.StartVerse}}-{{.EndVerse}}</h1>
     {{else}}
     <h1><center><a href="../{{.Chapter}}">{{ .BookName }} {{ .Chapter }}</a>:{{.SingleVerse}}
@@ -253,14 +378,20 @@ const (
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
+      .chapters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+      gap: 4px;
+      padding: 8px;
+      }
       .block {
       display: block;
       width: 100%;
       border: none;
       background-color: #4CAF50;
       color: white;
-      padding: 14px 28px;
-      font-size: 16px;
+      padding: 10px 8px;
+      font-size: 14px;
       cursor: pointer;
       text-align: center;
       }
@@ -268,17 +399,18 @@ const (
       background-color: #ddd;
       color: black;
       }
-` + searchBarCSS + `
+` + topBarCSS + `
     </style>
     <title>{{ .Name }}</title>
   </head>
   <body style="background-color:{{ .Color }};">
-` + searchBarHTML + `
-    <p><center><h1> {{ .Name }} </h1><center></p>
-    <button onclick="window.location.href='../bible/list_books';" class="w3-bar-item w3-button" style="width:33.3%">Books Menu</button>
+` + topBarHTML + `
+    <h1 style="text-align:center">{{ .Name }}</h1>
+    <div class="chapters-grid">
     {{ range $index, $results := .Links }}
-    <p><button class="block" onclick="window.location.href = '{{ $results }}'">{{ add $index 1 }}</button></p>
+    <button class="block" onclick="window.location.href = '{{ $results }}'">{{ add $index 1 }}</button>
     {{ end }}
+    </div>
   </body>
 </html>
 `
@@ -292,7 +424,7 @@ const (
     <meta name="ROBOTS" content="NOINDEX, NOFOLLOW" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <style type="text/css">
-` + searchBarCSS + `
+` + topBarCSS + `
       body { font-family: Arial, Helvetica, sans-serif; margin: 0; }
       .chart-container {
         position: relative;
@@ -341,7 +473,7 @@ const (
     </style>
   </head>
   <body>
-` + searchBarHTML + `
+` + topBarHTML + `
 
     <div class="results-header">
       Results for <span>"{{.SearchString}}"</span>

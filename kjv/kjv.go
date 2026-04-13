@@ -1,17 +1,14 @@
 package kjv
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math/rand"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
-	"time"
 
 	"net/http"
 
@@ -112,15 +109,18 @@ var (
 )
 
 type App struct {
-	Router   *mux.Router
-	Database *sql.DB
-	Redis    *redis.Client
+	Router *mux.Router
+	Redis  *redis.Client
 
 	OpenSearchURL      string
 	OpenSearchIndex    string
 	OpenSearchUsername string
 	OpenSearchPassword string
 	OpenSearchHTTP     *http.Client
+
+	// Immutable after startup. Preloaded from OpenSearch.
+	AllVerses  map[string]map[int][]Verse // book → chapter → sorted verses
+	FlatVerses []Verse                    // flat slice for random access
 
 	JWTSecret           []byte
 	JWTIssuer           string
@@ -208,7 +208,6 @@ func (app *App) SetupRouter() {
 
 func (app *App) listBooks(w http.ResponseWriter, r *http.Request) {
 	books := BooksCanonicalOrder
-
 	// funcs generates the link needed for button
 	funcs := template.FuncMap{"createLink": func(b string) string {
 		return fmt.Sprintf("%s?json=false", b)
@@ -349,29 +348,12 @@ func (app *App) listChapters(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, chapterInfo)
 }
 
-// getRandomVerseFromDB gets the verse from db to pass to pretty print api.
+// getRandomVerseFromDB returns a random verse from the in-memory cache, or falls back to OpenSearch.
 func (app *App) getRandomVerseFromDB() (Verse, error) {
-
-	var randVerse Verse
-
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
-
-	stmt := fmt.Sprintf("select book, chapter, verse, text from kjv where ordinal_verse=%d",
-		r1.Intn(lastCardinalVerseNum))
-
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		log.Fatalf("Failed DB.Query(%s)\n", stmt)
-		return randVerse, err
+	if len(app.FlatVerses) > 0 {
+		return app.FlatVerses[rand.Intn(len(app.FlatVerses))], nil
 	}
-
-	for rows.Next() {
-		rows.Scan(&randVerse.Book, &randVerse.Chapter, &randVerse.Verse, &randVerse.Text)
-	}
-
-	// OK
-	return randVerse, nil
+	return app.osGetRandomVerse()
 }
 
 func (app *App) search(w http.ResponseWriter, r *http.Request) {
@@ -383,118 +365,51 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		GraphCount   string // json array of ints
 	}
 
-	graphBookCounter := [66]int{}
-	var defaultSearchLimit = "100000"
-
 	// Handle text query
 	searchText, ok := r.URL.Query()["q"]
-	fmt.Printf("%v\n", searchText)
 	if !ok || len(searchText) < 1 {
 		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
 		return
 	}
-	// Check if regex mode is enabled
-	useRegex := r.URL.Query().Get("regex") == "true"
-
-	// Check for special characters in search string and return error if found (skip in regex mode)
-	if !useRegex {
-		if matched, _ := regexp.MatchString(`[^\w\s]`, searchText[0]); matched {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Search string contains special characters which are not allowed"))
-			return
-		}
-	}
-
-	// Validate regex pattern if regex mode is enabled
-	if useRegex {
-		_, err := regexp.Compile("(?i)" + searchText[0])
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("Invalid regex pattern: %s", err)))
-			return
-		}
-	}
 
 	// Handle limit size
-	searchLimit, ok := r.URL.Query()["n"]
-	if !ok || len(searchLimit) < 1 {
-		searchLimit = append(searchLimit, defaultSearchLimit)
+	limit := 10000
+	if n := r.URL.Query().Get("n"); n != "" {
+		if parsed, err := strconv.Atoi(n); err == nil && parsed > 0 {
+			limit = parsed
+		}
 	}
 
-	limit, err := strconv.Atoi(searchLimit[0])
-	if err != nil {
-		fmt.Println("Whoopsi with the limit size.")
-		w.WriteHeader(http.StatusNotAcceptable)
-		w.Write([]byte("whoopsie with the limit size.."))
-		return
-	}
-
-	// Check if show_italics parameter is present and set to true
-	showItalics := false
-	if italicsParam := r.URL.Query().Get("show_italics"); italicsParam == "true" {
-		showItalics = true
-	}
+	// Check if show_italics parameter is present
+	showItalics := r.URL.Query().Get("show_italics") == "true"
 
 	matches.SearchString = searchText[0]
 
-	var rows *sql.Rows
-	if useRegex {
-		rows, err = app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv")
-	} else {
-		rows, err = app.Database.Query("select book, chapter, verse, text, ordinal_book from kjv where replace(replace(text, '[', ''), ']', '') like ? limit ?", "%"+searchText[0]+"%", limit)
-	}
+	// Query OpenSearch
+	verses, graphCounter, err := app.osSearch(searchText[0], limit)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/text")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed database query!"))
-		log.Println(err)
+		http.Error(w, "Search service unavailable", http.StatusServiceUnavailable)
+		log.Printf("OpenSearch search error: %v", err)
 		return
 	}
 
-	regexCount := 0
-	overallCount := make(map[string]int)
-	re := regexp.MustCompile("(?i)" + searchText[0])
-
-	for rows.Next() {
-		match := Verse{}
-		var ordinalBook int
-		err := rows.Scan(&match.Book, &match.Chapter, &match.Verse, &match.Text, &ordinalBook)
-
-		if !showItalics {
-			match.RemoveItalicMarkers()
+	// Strip italic markers unless show_italics is set
+	if !showItalics {
+		for i := range verses {
+			verses[i].RemoveItalicMarkers()
 		}
-
-		if err != nil {
-			w.Header().Set("Content-Type", "application/text")
-			w.WriteHeader(http.StatusInternalServerError)
-			msg := fmt.Sprintf("Failed to scan query: %s\n", err)
-			w.Write([]byte(msg))
-			return
-		}
-
-		// In regex mode, skip verses that don't match the pattern
-		if useRegex {
-			if !re.MatchString(match.Text) {
-				continue
-			}
-			if overallCount["overall"] >= limit {
-				break
-			}
-		}
-
-		//////////////////////////////
-		// Count regex finds	    //
-		//////////////////////////////
-		foundCount := re.FindAll([]byte(match.Text), -1)
-		regexCount = regexCount + len(foundCount)
-
-		overallCount[match.Book] += 1
-		overallCount["overall"] += 1
-		matches.Verses = append(matches.Verses, match)
-		graphBookCounter[ordinalBook-1] += 1
 	}
 
+	matches.Verses = verses
+
+	// Build per-book count map for JSON response
+	overallCount := make(map[string]int)
+	for _, v := range verses {
+		overallCount[v.Book]++
+		overallCount["overall"]++
+	}
 	matches.Count = overallCount
+
 	// Handle json request
 	if wantsJson(r) {
 		jsonizeResponse(matches, w)
@@ -507,8 +422,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 			a.Book,
 			strconv.Itoa(a.Chapter),
 			strconv.Itoa(a.Verse),
-		},
-			"/")
+		}, "/")
 	}}
 
 	tmpl, err := template.New("results").Funcs(funcs).Parse(searchResultTemplate)
@@ -518,7 +432,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	graphBytes, err := json.Marshal(graphBookCounter)
+	graphBytes, err := json.Marshal(graphCounter)
 	if err != nil {
 		http.Error(w, "Failed to marshal graph data", http.StatusInternalServerError)
 		log.Printf("JSON marshaling error: %v", err)
@@ -527,13 +441,10 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 
 	matches.GraphCount = string(graphBytes)
 
-	err = tmpl.Execute(w, matches)
-	if err != nil {
+	if err := tmpl.Execute(w, matches); err != nil {
 		http.Error(w, "Failed to execute search template", http.StatusInternalServerError)
 		log.Printf("Template execution error: %v", err)
-		return
 	}
-
 }
 
 func jsonizeResponse(obj interface{}, w http.ResponseWriter) {
@@ -693,22 +604,23 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 
 	verses.Chapter = chapter
 
-	stmt := fmt.Sprintf("select verse, text from kjv where book='%s' and chapter=%v", verses.BookName, verses.Chapter)
-
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("400 - Could not query such a request: "))
-		return
+	var osVerses []Verse
+	if app.AllVerses != nil {
+		if chapters, ok := app.AllVerses[verses.BookName]; ok {
+			osVerses = chapters[verses.Chapter]
+		}
+	} else {
+		var osErr error
+		osVerses, osErr = app.osGetChapter(verses.BookName, verses.Chapter)
+		if osErr != nil {
+			http.Error(w, "Search service unavailable", http.StatusServiceUnavailable)
+			log.Printf("OpenSearch getChapter error: %v", osErr)
+			return
+		}
 	}
-	defer rows.Close()
 
-	var verse int
-	var text string
-
-	for rows.Next() {
-		rows.Scan(&verse, &text)
+	for _, v := range osVerses {
+		text := v.Text
 		if !showItalics {
 			text = strings.ReplaceAll(text, "[", "")
 			text = strings.ReplaceAll(text, "]", "")
@@ -724,7 +636,6 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if verses.Chapter < BookChapterLimit[verses.BookName] {
-		// verses.NextChapterLink = fmt.Sprintf("get_chapter?book=%s&chapter=%s", verses.BookName, strconv.Itoa(verses.Chapter+1))
 		verses.NextChapterLink = fmt.Sprintf("%s?json=false", strconv.Itoa(verses.Chapter+1))
 	}
 
@@ -740,9 +651,7 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 	// add function to increment range indexing since it starts at 0 by default
 	funcs := template.FuncMap{"add": func(x, y int) int { return x + y }}
 	verseLink := template.FuncMap{"verseLink": func(x int) string {
-
 		verseOffSet := strconv.Itoa(x + 1)
-
 		return fmt.Sprintf("%s/%s?json=false",
 			strconv.Itoa(verses.Chapter),
 			verseOffSet,
@@ -821,7 +730,7 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 	// Check Verse
 	isVerseRange := strings.Contains(requestVars["verse"], "-")
 
-	stmt := ""
+	var verseNums []int
 
 	if isVerseRange {
 		// Multiple Verse
@@ -840,23 +749,10 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Create the sqlverseRange
-		sqlVerseRange := ""
-		for i := verses.StartVerse; i < verses.EndVerse; i++ {
-			sqlVerseRange = sqlVerseRange + strconv.Itoa(i) + ","
+		for i := verses.StartVerse; i <= verses.EndVerse; i++ {
+			verseNums = append(verseNums, i)
 		}
-		sqlVerseRange = sqlVerseRange + strconv.Itoa(verses.EndVerse)
 
-		log.Printf("sql verse range: %s", sqlVerseRange)
-
-		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse in (%s)\n",
-			bookName,
-			strconv.Itoa(rChapter),
-			sqlVerseRange)
-
-		log.Printf("Multi verse sql query: %s", stmt)
-
-		// create HTML Title
 		verses.HTMLTitle = fmt.Sprintf("%s %s:%s-%s",
 			bookName,
 			strconv.Itoa(rChapter),
@@ -874,17 +770,8 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		}
 
 		verses.SingleVerse = rVerse
+		verseNums = []int{rVerse}
 
-		// Query the database
-		stmt = fmt.Sprintf("select verse, text from kjv where book=\"%s\" and chapter=%s and verse=%s",
-			bookName,
-			strconv.Itoa(rChapter),
-			strconv.Itoa(rVerse),
-		)
-
-		log.Printf("Single verse sql query: %s\n", stmt)
-
-		// create HTML Title
 		verses.HTMLTitle = fmt.Sprintf("%s %s:%s",
 			bookName,
 			strconv.Itoa(rChapter),
@@ -892,19 +779,31 @@ func (app *App) getVerse(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	rows, err := app.Database.Query(stmt)
-	if err != nil {
-		http.Error(w, "Could not query DB", http.StatusInternalServerError)
-		return
+	var osVerses []Verse
+	if app.AllVerses != nil {
+		if chapters, ok := app.AllVerses[bookName]; ok {
+			wanted := make(map[int]bool, len(verseNums))
+			for _, n := range verseNums {
+				wanted[n] = true
+			}
+			for _, v := range chapters[rChapter] {
+				if wanted[v.Verse] {
+					osVerses = append(osVerses, v)
+				}
+			}
+		}
+	} else {
+		var osErr error
+		osVerses, osErr = app.osGetVerses(bookName, rChapter, verseNums)
+		if osErr != nil {
+			http.Error(w, "Search service unavailable", http.StatusServiceUnavailable)
+			log.Printf("OpenSearch getVerses error: %v", osErr)
+			return
+		}
 	}
-	defer rows.Close()
 
-	var verseNum int
-	var text string
-
-	for rows.Next() {
-		rows.Scan(&verseNum, &text)
-		verses.Verses = append(verses.Verses, map[int]string{verseNum: text})
+	for _, v := range osVerses {
+		verses.Verses = append(verses.Verses, map[int]string{v.Verse: v.Text})
 	}
 
 	if wantsJson(r) {
