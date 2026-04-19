@@ -133,19 +133,19 @@ h1, h2 {
   color: black;
 }
 
-/* Gold nav buttons matching the Go chapter template */
+/* Nav buttons — green to match book/chapter buttons */
 .nav-btn {
-  background-color: gold;
-  border: 1px solid green;
-  color: black;
+  background-color: #4CAF50;
+  border: none;
+  color: white;
   padding: 10px 24px;
   cursor: pointer;
   font-size: 14px;
 }
 
 .nav-btn:hover {
-  background-color: #3e8e41;
-  color: white;
+  background-color: #ddd;
+  color: black;
 }
 
 .nav-bar {
@@ -206,6 +206,17 @@ h1, h2 {
 
 .chip:hover {
   background: #ccc;
+}
+
+/* Chart */
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 350px;
+  margin: 16px 0;
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 8px;
 }
 
 /* Results */

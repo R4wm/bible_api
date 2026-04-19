@@ -1,6 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+declare const Chart: any;
+
 const defaultScope = "synonyms:write";
+
+const BOOKS_CANONICAL_ORDER = [
+  "GENESIS","EXODUS","LEVITICUS","NUMBERS","DEUTERONOMY",
+  "JOSHUA","JUDGES","RUTH","1SAMUEL","2SAMUEL",
+  "1KINGS","2KINGS","1CHRONICLES","2CHRONICLES",
+  "EZRA","NEHEMIAH","ESTHER","JOB","PSALMS","PROVERBS",
+  "ECCLESIASTES","SONG OF SOLOMON","ISAIAH","JEREMIAH","LAMENTATIONS",
+  "EZEKIEL","DANIEL","HOSEA","JOEL","AMOS",
+  "OBADIAH","JONAH","MICAH","NAHUM","HABAKKUK",
+  "ZEPHANIAH","HAGGAI","ZECHARIAH","MALACHI",
+  "MATTHEW","MARK","LUKE","JOHN","ACTS",
+  "ROMANS","1CORINTHIANS","2CORINTHIANS","GALATIANS","EPHESIANS",
+  "PHILIPPIANS","COLOSSIANS","1THESSALONIANS","2THESSALONIANS",
+  "1TIMOTHY","2TIMOTHY","TITUS","PHILEMON","HEBREWS",
+  "JAMES","1PETER","2PETER","1JOHN","2JOHN","3JOHN",
+  "JUDE","REVELATION",
+];
 
 type SearchResult = {
   book: string;
@@ -34,12 +53,6 @@ type ChapterResponse = {
   Verses?: string[];
 };
 
-type VerseResponse = {
-  BookName?: string;
-  Chapter?: number;
-  Verses?: Record<string, string>[];
-};
-
 type ReadVerse = {
   number: number;
   text: string;
@@ -49,7 +62,6 @@ type View = "books" | "chapters" | "reading" | "search";
 
 export default function App() {
   const [token, setToken] = useState("");
-  const [status, setStatus] = useState("Checking session...");
   const [config, setConfig] = useState<AuthConfig>({});
 
   const [view, setView] = useState<View>("books");
@@ -63,6 +75,7 @@ export default function App() {
   const [suggestQuery, setSuggestQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [bookCounts, setBookCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -74,6 +87,8 @@ export default function App() {
   const menuRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLCanvasElement>(null);
+  const chartInstance = useRef<any>(null);
 
   const fontClasses = ["font-blackletter", "font-renaissance", "font-serif"];
 
@@ -108,6 +123,68 @@ export default function App() {
     };
   }, []);
 
+  // Render chart when search results change
+  useEffect(() => {
+    if (view !== "search" || !chartRef.current || typeof Chart === "undefined") return;
+
+    const counts = BOOKS_CANONICAL_ORDER.map((b) => bookCounts[b] || 0);
+    const colors = counts.map((val, i) => {
+      if (val === 0) return "rgba(200,200,200,0.3)";
+      return i < 39 ? "rgba(220, 88, 42, 0.7)" : "rgba(34, 139, 134, 0.7)";
+    });
+    const borders = counts.map((val, i) => {
+      if (val === 0) return "rgba(200,200,200,0.5)";
+      return i < 39 ? "rgba(180, 60, 20, 1)" : "rgba(20, 100, 100, 1)";
+    });
+
+    chartInstance.current?.destroy();
+    chartInstance.current = new Chart(chartRef.current, {
+      type: "bar",
+      data: {
+        labels: BOOKS_CANONICAL_ORDER,
+        datasets: [{
+          label: "Matches by book",
+          data: counts,
+          backgroundColor: colors,
+          borderColor: borders,
+          borderWidth: 1,
+          borderRadius: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item: any) => {
+                const v = item.raw;
+                return v + " match" + (v !== 1 ? "es" : "");
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { maxRotation: 90, minRotation: 45, font: { size: 10 } },
+            grid: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0 },
+            title: { display: true, text: "Matches" },
+          },
+        },
+      },
+    });
+
+    return () => {
+      chartInstance.current?.destroy();
+      chartInstance.current = null;
+    };
+  }, [view, bookCounts]);
+
   useEffect(() => {
     fetch("/auth/config")
       .then((res) => res.json())
@@ -118,19 +195,15 @@ export default function App() {
   useEffect(() => {
     fetch("/auth/me")
       .then((res) => {
-        if (!res.ok) {
-          setStatus("Not signed in.");
-          return null;
-        }
+        if (!res.ok) return null;
         return res.json();
       })
       .then((data) => {
         if (data?.token) {
           setToken(data.token);
-          setStatus("Signed in.");
         }
       })
-      .catch(() => setStatus("Not signed in."));
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -151,10 +224,9 @@ export default function App() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id_token: response.credential, scope: defaultScope }),
           });
-          if (!resp.ok) { setStatus("Login failed."); return; }
+          if (!resp.ok) return;
           const data = await resp.json();
           setToken(data.token || "");
-          setStatus("Signed in.");
         },
       });
       google.accounts.id.renderButton(document.getElementById("google-button"), {
@@ -202,6 +274,7 @@ export default function App() {
       if (!resp.ok) throw new Error("Search failed");
       const data = await resp.json();
       setResults(data?.data?.results || []);
+      setBookCounts(data?.data?.book_counts || {});
       setView("search");
     } catch {
       setError("Search failed. Check the API.");
@@ -226,7 +299,6 @@ export default function App() {
   const logout = async () => {
     await fetch("/auth/logout", { method: "POST" });
     setToken("");
-    setStatus("Not signed in.");
   };
 
   const safeHighlight = useMemo(() => {
@@ -299,12 +371,16 @@ export default function App() {
       )}
 
       {/* Login */}
-      <div className="login-section">
-        <div id="google-button" />
-        <p className="status">{status}</p>
-        {hasToken && <div className="token">{token}</div>}
-        {hasToken && <button onClick={logout}>Logout</button>}
-      </div>
+      {!hasToken ? (
+        <div className="login-section">
+          <div id="google-button" />
+        </div>
+      ) : (
+        <div className="login-section">
+          <span className="status">Signed in</span>
+          <button onClick={logout}>Logout</button>
+        </div>
+      )}
 
       {/* Suggest bar */}
       <div className="search-bar">
@@ -382,6 +458,9 @@ export default function App() {
       {view === "search" && (
         <>
           <h2>Search Results</h2>
+          <div className="chart-container">
+            <canvas ref={chartRef} />
+          </div>
           {results.length === 0 && !loading && <div className="empty">No results.</div>}
           {results.map((item) => (
             <div key={`${item.book}-${item.chapter}-${item.verse}`} className="result">
