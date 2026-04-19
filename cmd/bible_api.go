@@ -108,16 +108,26 @@ func main() {
 	// Wait for OpenSearch to be ready before starting
 	if app.OpenSearchURL != "" {
 		if err := waitForOpenSearch(app.OpenSearchURL, app.OpenSearchHTTP, 30*time.Second); err != nil {
-			log.Fatalf("OpenSearch readiness check failed: %v", err)
+			log.Warnf("OpenSearch not reachable at startup: %v — will retry in background", err)
+		} else {
+			log.Info("OpenSearch is ready")
 		}
-		log.Info("OpenSearch is ready")
 	}
 
 	app.SetupRouter()
 	app.InitOpenSearch()
 
 	if err := app.PreloadVerses(); err != nil {
-		log.Warnf("Failed to preload verses: %v — content endpoints will use live OpenSearch queries", err)
+		log.Warnf("Initial preload failed: %v — will retry in background every 30s", err)
+		go func() {
+			for {
+				time.Sleep(30 * time.Second)
+				if err := app.PreloadVerses(); err == nil {
+					log.Infof("Background preload succeeded: %d verses cached", len(app.FlatVerses))
+					return
+				}
+			}
+		}()
 	} else {
 		log.Infof("Preloaded %d verses into memory", len(app.FlatVerses))
 	}
