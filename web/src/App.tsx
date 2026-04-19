@@ -236,7 +236,7 @@ export default function App() {
     };
     initGoogle();
     return () => { cancelled = true; };
-  }, [config.google_client_id]);
+  }, [config.google_client_id, hasToken]);
 
   useEffect(() => {
     fetch("/bible/list_books?json=true")
