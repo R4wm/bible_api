@@ -224,7 +224,7 @@ export default function App() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id_token: response.credential, scope: defaultScope }),
           });
-          if (!resp.ok) return;
+          if (!resp.ok) { setError("Login failed."); return; }
           const data = await resp.json();
           setToken(data.token || "");
         },
@@ -371,16 +371,15 @@ export default function App() {
       )}
 
       {/* Login */}
-      {!hasToken ? (
-        <div className="login-section">
-          <div id="google-button" />
-        </div>
-      ) : (
-        <div className="login-section">
-          <span className="status">Signed in</span>
-          <button onClick={logout}>Logout</button>
-        </div>
-      )}
+      <div className="login-section">
+        <div id="google-button" style={{ display: hasToken ? "none" : "block" }} />
+        {hasToken && (
+          <>
+            <span className="status">Signed in</span>
+            <button onClick={logout}>Logout</button>
+          </>
+        )}
+      </div>
 
       {/* Suggest bar */}
       <div className="search-bar">
