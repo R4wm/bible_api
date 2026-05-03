@@ -155,28 +155,24 @@ The public deployment at **prsmusa.com** splits the data plane from the API plan
 
 ### Deploy procedure (prsmusa.com)
 
-Three independent surfaces — pick the one(s) you've actually changed.
-
-**Frontend only** (changes under `web/`, no Go edits):
+`scripts/deploy.sh` (driven by `make deploy*` targets) builds locally, rsyncs to `r4wm@prsmusa.com`, and restarts `bible_api.service`. The Go binary is cross-compiled `CGO_ENABLED=0 GOOS=linux GOARCH=amd64` so the static ELF dodges glibc skew between dev box and Linode. The binary lands in `/tmp/` first and is moved into `/usr/local/bin/bible_api` via `sudo install -m 755` — atomic rename, no rsync-as-root.
 
 ```bash
-# Local — rebuild the bundle
-cd web && npm run build && cd ..
-
-# Push the bundle to the Linode (no restart needed; Go re-reads files per request)
-rsync -av --delete web/dist/ r4wm@prsmusa.com:/opt/bible_api/web/dist/
+make deploy           # frontend + Go binary, then restart service
+make deploy-ui        # frontend only (web/dist/) — fast iteration on App.tsx
+make deploy-backend   # Go binary only, then restart
+make deploy-dry       # full deploy without the systemctl restart
 ```
 
-**Go binary only** (changes under `cmd/`, `kjv/`, `db/`, etc., no `web/` edits):
+Override the target host:
 
 ```bash
-# On the Linode (or build locally for matching arch and scp the binary):
-cd ~/github/bible_api && git pull
-./install.sh                           # builds and copies to /usr/local/bin (sudo)
-sudo systemctl restart bible_api
+BIBLE_API_DEPLOY_HOST=r4wm@other.host make deploy
+# or
+./scripts/deploy.sh --host r4wm@other.host
 ```
 
-**Both** — do the frontend rsync, then the binary rebuild + restart.
+The script requires `npm`, `go`, `rsync`, `ssh` locally, and passwordless SSH + `sudo` on the target.
 
 ### Verifying a deploy
 
@@ -424,6 +420,7 @@ bible_api/
 │   └── texts/               # Legacy plain-text Bible translations
 ├── web/                      # React UI (served at /v2)
 ├── scripts/
+│   ├── deploy.sh                   # Build + rsync + systemctl restart on prsmusa.com
 │   └── index_kjv_to_opensearch.py  # Index Bible data into OpenSearch
 ├── docker-compose.yml        # OpenSearch + Redis + Bible API
 ├── Dockerfile

@@ -1,6 +1,7 @@
 # Makefile for bible_api project
 
-.PHONY: all build run test clean opensearch-up opensearch-down index-kjv
+.PHONY: all build run test clean opensearch-up opensearch-down index-kjv \
+        deploy deploy-ui deploy-backend deploy-dry
 
 all: build
 
@@ -24,3 +25,15 @@ opensearch-down:
 
 index-kjv:
 	python3 scripts/index_kjv_to_opensearch.py --db data/kjv.db --index kjv_v2 --url http://localhost:9200
+
+deploy:
+	./scripts/deploy.sh
+
+deploy-ui:
+	./scripts/deploy.sh --ui-only
+
+deploy-backend:
+	./scripts/deploy.sh --backend-only
+
+deploy-dry:
+	./scripts/deploy.sh --no-restart
