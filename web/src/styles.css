@@ -304,3 +304,49 @@ h1, h2 {
   border-top: 1px solid #ccc;
   margin-top: 16px;
 }
+
+/* Dark theme — opt-in via body.theme-dark */
+body.theme-dark { background-color: #000; color: #fff; }
+body.theme-dark .app { color: #fff; }
+
+/* Top bar + menu */
+body.theme-dark .top-bar,
+body.theme-dark .menu-panel { background-color: #111; border-color: #333; color: #fff; }
+body.theme-dark .hamburger { color: #fff; }
+body.theme-dark .menu-panel a,
+body.theme-dark .menu-panel button { color: #fff; }
+body.theme-dark .hamburger:hover,
+body.theme-dark .menu-panel a:hover,
+body.theme-dark .menu-panel button:hover { background: rgba(255,255,255,0.1); }
+
+/* Settings panel */
+body.theme-dark .settings-panel { background-color: #111; border-color: #333; color: #fff; }
+
+/* Search bar */
+body.theme-dark .search-bar { background-color: #111; }
+body.theme-dark .search-bar input { background-color: #222; color: #fff; border-color: #444; }
+
+/* Suggestion chips */
+body.theme-dark .chip { background: #222; color: #fff; border-color: #444; }
+body.theme-dark .chip:hover { background: #333; }
+
+/* Chart container */
+body.theme-dark .chart-container { background: #111; border-color: #333; }
+
+/* Results */
+body.theme-dark .result { border-bottom-color: #333; }
+body.theme-dark .result .meta { color: #ddd; }
+body.theme-dark .result .text mark { background: #553; color: #fff; }
+
+/* Muted text surfaces */
+body.theme-dark .empty,
+body.theme-dark .hint,
+body.theme-dark .footer,
+body.theme-dark .login-section .status { color: #aaa; }
+
+/* Login + token block */
+body.theme-dark .login-section { border-color: #333; }
+body.theme-dark .login-section .token { background: #222; color: #fff; }
+
+/* Footer separator */
+body.theme-dark .footer { border-top-color: #333; }

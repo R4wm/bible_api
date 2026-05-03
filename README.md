@@ -115,6 +115,80 @@ go build -o bible_api cmd/bible_api.go
 ./bible_api
 ```
 
+## Production Topology
+
+The public deployment at **prsmusa.com** splits the data plane from the API plane across two hosts joined by a WireGuard tunnel.
+
+```
+                        prsmusa.com (Linode)                    Home network
+                        --------------------                    ------------
+   Internet ──HTTPS──▶  nginx :443 ──path-route──▶ bible_api          OpenSearch
+                              │                   :8000 ◀──WireGuard──▶ :9200
+                              │                     │       (wg0)        (Pi)
+                              ├─/bible/  ─────────▶ │
+                              ├─/v2/     ─────────▶ │
+                              ├─/auth/   ─────────▶ │
+                              ├─/docs    ─────────▶ │
+                              └─/        ─────────▶ Other Docker apps :81
+                                                    │
+                                                    └─▶ Redis :6379 (local)
+```
+
+### Linode (API host)
+
+- **nginx** terminates TLS on `:443` and proxies the bible_api paths (`/bible/`, `/v2/`, `/auth/`, `/docs`, `/docs.json`) to `127.0.0.1:8000`. Other paths fall through to unrelated Docker apps on `:81`. The site config lives at `/etc/nginx/sites-enabled/prsmusa.nginx.conf`.
+- **bible_api** runs natively (not in Docker) under systemd as the `r4wm` user.
+  - Unit: `/etc/systemd/system/bible_api.service` (a copy of [bible_api.service](bible_api.service))
+  - Binary: `/usr/local/bin/bible_api` (installed via [install.sh](install.sh))
+  - `WorkingDirectory=/opt/bible_api`
+  - `Environment="UI_DIST_DIR=/opt/bible_api/web/dist"` — the React bundle lives at this path; the Go server reads it from disk at runtime via `http.FileServer` (see [kjv/ui.go](kjv/ui.go)). No `go:embed`, so frontend-only changes do **not** require rebuilding the Go binary.
+  - `Environment="OPENSEARCH_URL=http://<pi-wg-ip>:9200"` — points across the tunnel to the Pi.
+  - The unit has `After=wg-quick@wg0.service` so the API doesn't start before the tunnel is up.
+- **Redis** runs on the host at `localhost:6379` (rate limiting + sessions).
+- The Linode does **not** have `npm` installed. The React bundle must be built elsewhere and shipped.
+
+### Home (data host)
+
+- Raspberry Pi running **OpenSearch 2.x** on `:9200`.
+- Reachable from the Linode only via WireGuard (`wg0`); not exposed publicly.
+- Indexed once with `scripts/index_kjv_to_opensearch.py` against the Pi's OpenSearch URL.
+
+### Deploy procedure (prsmusa.com)
+
+Three independent surfaces — pick the one(s) you've actually changed.
+
+**Frontend only** (changes under `web/`, no Go edits):
+
+```bash
+# Local — rebuild the bundle
+cd web && npm run build && cd ..
+
+# Push the bundle to the Linode (no restart needed; Go re-reads files per request)
+rsync -av --delete web/dist/ r4wm@prsmusa.com:/opt/bible_api/web/dist/
+```
+
+**Go binary only** (changes under `cmd/`, `kjv/`, `db/`, etc., no `web/` edits):
+
+```bash
+# On the Linode (or build locally for matching arch and scp the binary):
+cd ~/github/bible_api && git pull
+./install.sh                           # builds and copies to /usr/local/bin (sudo)
+sudo systemctl restart bible_api
+```
+
+**Both** — do the frontend rsync, then the binary rebuild + restart.
+
+### Verifying a deploy
+
+```bash
+curl -I https://prsmusa.com/v2/                                  # 200 from the Go server
+curl -s https://prsmusa.com/bible/random_verse?json=true | head  # OpenSearch round-trip across WG
+sudo systemctl status bible_api --no-pager                       # on the Linode
+sudo journalctl -u bible_api -n 50 --no-pager                    # on the Linode
+```
+
+If `random_verse` hangs or 5xx's, the WireGuard tunnel to the Pi is the first thing to check (`sudo wg show`, `sudo systemctl status wg-quick@wg0`).
+
 ## Rate Limiting
 
 The API includes built-in rate limiting to prevent abuse:

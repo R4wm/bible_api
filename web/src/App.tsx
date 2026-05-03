@@ -21,6 +21,23 @@ const BOOKS_CANONICAL_ORDER = [
   "JUDE","REVELATION",
 ];
 
+const BOOK_ABBREVIATIONS: Record<string, string> = {
+  "GENESIS": "Gen", "EXODUS": "Ex", "LEVITICUS": "Lev", "NUMBERS": "Num", "DEUTERONOMY": "Deut",
+  "JOSHUA": "Josh", "JUDGES": "Judg", "RUTH": "Ruth", "1SAMUEL": "1 Sam", "2SAMUEL": "2 Sam",
+  "1KINGS": "1 Kgs", "2KINGS": "2 Kgs", "1CHRONICLES": "1 Chr", "2CHRONICLES": "2 Chr",
+  "EZRA": "Ezra", "NEHEMIAH": "Neh", "ESTHER": "Esth", "JOB": "Job", "PSALMS": "Ps", "PROVERBS": "Prov",
+  "ECCLESIASTES": "Eccl", "SONG OF SOLOMON": "Song", "ISAIAH": "Isa", "JEREMIAH": "Jer", "LAMENTATIONS": "Lam",
+  "EZEKIEL": "Ezek", "DANIEL": "Dan", "HOSEA": "Hos", "JOEL": "Joel", "AMOS": "Amos",
+  "OBADIAH": "Obad", "JONAH": "Jonah", "MICAH": "Mic", "NAHUM": "Nah", "HABAKKUK": "Hab",
+  "ZEPHANIAH": "Zeph", "HAGGAI": "Hag", "ZECHARIAH": "Zech", "MALACHI": "Mal",
+  "MATTHEW": "Matt", "MARK": "Mark", "LUKE": "Luke", "JOHN": "John", "ACTS": "Acts",
+  "ROMANS": "Rom", "1CORINTHIANS": "1 Cor", "2CORINTHIANS": "2 Cor", "GALATIANS": "Gal", "EPHESIANS": "Eph",
+  "PHILIPPIANS": "Phil", "COLOSSIANS": "Col", "1THESSALONIANS": "1 Thess", "2THESSALONIANS": "2 Thess",
+  "1TIMOTHY": "1 Tim", "2TIMOTHY": "2 Tim", "TITUS": "Titus", "PHILEMON": "Phlm", "HEBREWS": "Heb",
+  "JAMES": "Jas", "1PETER": "1 Pet", "2PETER": "2 Pet", "1JOHN": "1 John", "2JOHN": "2 John", "3JOHN": "3 John",
+  "JUDE": "Jude", "REVELATION": "Rev",
+};
+
 type SearchResult = {
   book: string;
   chapter: number;
@@ -81,6 +98,9 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [font, setFont] = useState(() => localStorage.getItem("bible-font") || "default");
+  const [theme, setTheme] = useState<"light" | "dark">(
+    () => localStorage.getItem("bible-theme") === "dark" ? "dark" : "light"
+  );
 
   const hasToken = token.length > 0;
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -98,6 +118,21 @@ export default function App() {
     if (font !== "default") document.body.classList.add("font-" + font);
     localStorage.setItem("bible-font", font);
   }, [font]);
+
+  useEffect(() => {
+    document.body.classList.remove("theme-dark");
+    if (theme === "dark") document.body.classList.add("theme-dark");
+    localStorage.setItem("bible-theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (view === "reading" && selectedBook && selectedChapter) {
+      const abbr = BOOK_ABBREVIATIONS[selectedBook] ?? selectedBook;
+      document.title = `${abbr} ${selectedChapter}`;
+    } else {
+      document.title = "Bible API";
+    }
+  }, [view, selectedBook, selectedChapter]);
 
   // Close menu on Escape and outside click
   useEffect(() => {
@@ -126,6 +161,9 @@ export default function App() {
   // Render chart when search results change
   useEffect(() => {
     if (view !== "search" || !chartRef.current || typeof Chart === "undefined") return;
+
+    const axisColor = theme === "dark" ? "#ddd" : "#666";
+    const gridColor = theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)";
 
     const counts = BOOKS_CANONICAL_ORDER.map((b) => bookCounts[b] || 0);
     const colors = counts.map((val, i) => {
@@ -167,13 +205,14 @@ export default function App() {
         },
         scales: {
           x: {
-            ticks: { maxRotation: 90, minRotation: 45, font: { size: 10 } },
+            ticks: { maxRotation: 90, minRotation: 45, font: { size: 10 }, color: axisColor },
             grid: { display: false },
           },
           y: {
             beginAtZero: true,
-            ticks: { precision: 0 },
-            title: { display: true, text: "Matches" },
+            ticks: { precision: 0, color: axisColor },
+            grid: { color: gridColor },
+            title: { display: true, text: "Matches", color: axisColor },
           },
         },
       },
@@ -183,7 +222,7 @@ export default function App() {
       chartInstance.current?.destroy();
       chartInstance.current = null;
     };
-  }, [view, bookCounts]);
+  }, [view, bookCounts, theme]);
 
   useEffect(() => {
     fetch("/auth/config")
@@ -363,6 +402,22 @@ export default function App() {
                 value={opt.value}
                 checked={font === opt.value}
                 onChange={() => setFont(opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+          <strong>Theme</strong>
+          {[
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" },
+          ].map((opt) => (
+            <label key={opt.value}>
+              <input
+                type="radio"
+                name="theme-choice"
+                value={opt.value}
+                checked={theme === opt.value}
+                onChange={() => setTheme(opt.value as "light" | "dark")}
               />
               {opt.label}
             </label>
