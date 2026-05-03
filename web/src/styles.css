@@ -190,18 +190,41 @@ h1, h2 {
 
 /* Suggestions */
 .suggestions {
-  text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
   margin-bottom: 10px;
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
   background: #e0e0e0;
   border: 1px solid #aaa;
   border-radius: 4px;
   padding: 4px 10px;
-  margin: 2px;
   cursor: pointer;
   font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.chip-ref {
+  flex: 0 0 auto;
+  font-weight: bold;
+}
+
+.chip-separator {
+  flex: 0 0 auto;
+}
+
+.chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chip:hover {

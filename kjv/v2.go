@@ -506,8 +506,11 @@ func parseSuggestSearchResponse(body []byte) ([]map[string]interface{}, int, err
 	out := make([]map[string]interface{}, 0, len(resp.Hits.Hits))
 	for _, hit := range resp.Hits.Hits {
 		out = append(out, map[string]interface{}{
-			"text":  hit.Source.Text,
-			"score": hit.Score,
+			"text":    hit.Source.Text,
+			"score":   hit.Score,
+			"book":    hit.Source.Book,
+			"chapter": hit.Source.Chapter,
+			"verse":   hit.Source.Verse,
 		})
 	}
 	return out, resp.Took, nil

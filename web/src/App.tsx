@@ -49,6 +49,9 @@ type SearchResult = {
 type Suggestion = {
   text: string;
   score: number;
+  book?: string;
+  chapter?: number;
+  verse?: number;
 };
 
 type AuthConfig = {
@@ -335,6 +338,15 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [suggestQuery]);
 
+  const openSuggestion = (suggestion?: Suggestion) => {
+    if (!suggestion?.book || !suggestion.chapter || !suggestion.verse) return;
+    window.open(
+      `/bible/${encodeURIComponent(suggestion.book)}/${suggestion.chapter}/${suggestion.verse}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+
   const logout = async () => {
     await fetch("/auth/logout", { method: "POST" });
     setToken("");
@@ -441,14 +453,23 @@ export default function App() {
         <input
           value={suggestQuery}
           onChange={(e) => setSuggestQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") openSuggestion(suggestions[0]);
+          }}
           placeholder="Predictive suggestion"
         />
       </div>
       {suggestions.length > 0 && (
         <div className="suggestions">
           {suggestions.map((s) => (
-            <button key={`${s.text}-${s.score}`} className="chip" onClick={() => { setQuery(s.text); runSearch(); }}>
-              {s.text}
+            <button key={`${s.book ?? ""}-${s.chapter ?? ""}-${s.verse ?? ""}-${s.text}-${s.score}`} className="chip" onClick={() => openSuggestion(s)}>
+              {s.book && s.chapter && s.verse && (
+                <span className="chip-ref">
+                  {BOOK_ABBREVIATIONS[s.book] ?? s.book} {s.chapter}:{s.verse}
+                </span>
+              )}
+              {s.book && s.chapter && s.verse && <span className="chip-separator">—</span>}
+              <span className="chip-text">{s.text}</span>
             </button>
           ))}
         </div>
