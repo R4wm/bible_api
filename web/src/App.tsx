@@ -80,6 +80,15 @@ type ReadVerse = {
 
 type View = "books" | "chapters" | "reading" | "search";
 
+type GoogleProfile = { picture?: string; name?: string; email?: string };
+
+const decodeJwtPayload = (jwt: string): any => {
+  try {
+    const seg = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(seg));
+  } catch { return {}; }
+};
+
 export default function App() {
   const [token, setToken] = useState("");
   const [config, setConfig] = useState<AuthConfig>({});
@@ -100,9 +109,14 @@ export default function App() {
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [font, setFont] = useState(() => localStorage.getItem("bible-font") || "default");
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profile, setProfile] = useState<GoogleProfile>(() => {
+    try { return JSON.parse(localStorage.getItem("bible-profile") || "{}"); }
+    catch { return {}; }
+  });
+  const [font, setFont] = useState(() => localStorage.getItem("bible-font") || "renaissance");
   const [theme, setTheme] = useState<"light" | "dark">(
-    () => localStorage.getItem("bible-theme") === "dark" ? "dark" : "light"
+    () => localStorage.getItem("bible-theme") === "light" ? "light" : "dark"
   );
 
   const hasToken = token.length > 0;
@@ -110,6 +124,8 @@ export default function App() {
   const menuRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const profileBtnRef = useRef<HTMLButtonElement>(null);
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<any>(null);
 
@@ -140,17 +156,19 @@ export default function App() {
   // Close menu on Escape and outside click
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setMenuOpen(false); setSettingsOpen(false); }
+      if (e.key === "Escape") { setMenuOpen(false); setSettingsOpen(false); setProfileOpen(false); }
     };
     const onClick = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (
-        menuRef.current && !menuRef.current.contains(target) &&
-        menuBtnRef.current && !menuBtnRef.current.contains(target) &&
-        (!settingsRef.current || !settingsRef.current.contains(target))
-      ) {
+      const insideMenu = (menuRef.current && menuRef.current.contains(target)) ||
+        (menuBtnRef.current && menuBtnRef.current.contains(target)) ||
+        (settingsRef.current && settingsRef.current.contains(target));
+      const insideProfile = (profileRef.current && profileRef.current.contains(target)) ||
+        (profileBtnRef.current && profileBtnRef.current.contains(target));
+      if (!insideMenu && !insideProfile) {
         setMenuOpen(false);
         setSettingsOpen(false);
+        setProfileOpen(false);
       }
     };
     document.addEventListener("keydown", onKey);
@@ -241,8 +259,16 @@ export default function App() {
         return res.json();
       })
       .then((data) => {
-        if (data?.token) {
-          setToken(data.token);
+        if (!data) return;
+        if (data.token) setToken(data.token);
+        if (data.picture || data.name || data.email) {
+          const fromServer: GoogleProfile = {
+            picture: data.picture || undefined,
+            name: data.name || undefined,
+            email: data.email || undefined,
+          };
+          setProfile(fromServer);
+          localStorage.setItem("bible-profile", JSON.stringify(fromServer));
         }
       })
       .catch(() => {});
@@ -261,6 +287,14 @@ export default function App() {
       google.accounts.id.initialize({
         client_id: config.google_client_id,
         callback: async (response: { credential: string }) => {
+          const claims = decodeJwtPayload(response.credential);
+          const newProfile: GoogleProfile = {
+            picture: claims.picture,
+            name: claims.name,
+            email: claims.email,
+          };
+          localStorage.setItem("bible-profile", JSON.stringify(newProfile));
+          setProfile(newProfile);
           const resp = await fetch("/auth/google/token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -278,7 +312,7 @@ export default function App() {
     };
     initGoogle();
     return () => { cancelled = true; };
-  }, [config.google_client_id, hasToken]);
+  }, [config.google_client_id, hasToken, profileOpen]);
 
   useEffect(() => {
     fetch("/bible/list_books?json=true")
@@ -350,6 +384,9 @@ export default function App() {
   const logout = async () => {
     await fetch("/auth/logout", { method: "POST" });
     setToken("");
+    setProfile({});
+    localStorage.removeItem("bible-profile");
+    setProfileOpen(false);
   };
 
   const safeHighlight = useMemo(() => {
@@ -384,7 +421,36 @@ export default function App() {
             {loading ? "..." : "search"}
           </button>
         </div>
+        <button
+          className="profile-btn"
+          ref={profileBtnRef}
+          aria-label={hasToken ? "Open profile menu" : "Sign in"}
+          aria-expanded={profileOpen}
+          onClick={() => setProfileOpen(!profileOpen)}
+        >
+          {hasToken && profile.picture ? (
+            <img src={profile.picture} alt="" referrerPolicy="no-referrer" />
+          ) : hasToken && profile.name ? (
+            <span className="profile-initial">{profile.name.charAt(0).toUpperCase()}</span>
+          ) : (
+            <span className="profile-icon" aria-hidden="true">&#x1F464;</span>
+          )}
+        </button>
       </div>
+
+      {/* Profile panel */}
+      {profileOpen && (
+        <div className="profile-panel" ref={profileRef}>
+          <div id="google-button" style={{ display: hasToken ? "none" : "block" }} />
+          {hasToken && (
+            <>
+              {profile.name && <div className="profile-name">{profile.name}</div>}
+              {profile.email && <div className="profile-email">{profile.email}</div>}
+              <button className="profile-logout" onClick={logout}>Logout</button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Menu panel */}
       {menuOpen && (
@@ -436,17 +502,6 @@ export default function App() {
           ))}
         </div>
       )}
-
-      {/* Login */}
-      <div className="login-section">
-        <div id="google-button" style={{ display: hasToken ? "none" : "block" }} />
-        {hasToken && (
-          <>
-            <span className="status">Signed in</span>
-            <button onClick={logout}>Logout</button>
-          </>
-        )}
-      </div>
 
       {/* Suggest bar */}
       <div className="search-bar">

@@ -270,29 +270,6 @@ h1, h2 {
   margin: 8px 0;
 }
 
-/* Login section */
-.login-section {
-  text-align: center;
-  padding: 10px;
-  border: 1px solid #ccc;
-  margin-bottom: 10px;
-}
-
-.login-section .status {
-  font-size: 13px;
-  color: #555;
-}
-
-.login-section .token {
-  font-family: monospace;
-  font-size: 11px;
-  background: #f0f0f0;
-  padding: 6px;
-  word-break: break-all;
-  margin: 6px 0;
-  min-height: 40px;
-}
-
 /* Read section */
 .selectors {
   text-align: center;
@@ -364,12 +341,63 @@ body.theme-dark .result .text mark { background: #553; color: #fff; }
 /* Muted text surfaces */
 body.theme-dark .empty,
 body.theme-dark .hint,
-body.theme-dark .footer,
-body.theme-dark .login-section .status { color: #aaa; }
-
-/* Login + token block */
-body.theme-dark .login-section { border-color: #333; }
-body.theme-dark .login-section .token { background: #222; color: #fff; }
+body.theme-dark .footer { color: #aaa; }
 
 /* Footer separator */
 body.theme-dark .footer { border-top-color: #333; }
+
+/* Profile button in top bar */
+.profile-btn {
+  flex: 0 0 auto;
+  width: 40px; height: 40px;
+  padding: 4px;
+  margin-right: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.profile-btn img {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  display: block;
+}
+.profile-btn .profile-initial,
+.profile-btn .profile-icon {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: #4CAF50;
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: bold;
+}
+.profile-btn .profile-icon { font-size: 22px; font-weight: normal; }
+
+/* Profile panel — parallels .menu-panel */
+.profile-panel {
+  background: #c3dfef;
+  border-bottom: 2px solid #0076a3;
+  margin: 0 -10px;
+  padding: 12px 16px;
+  text-align: center;
+}
+.profile-panel .profile-name { font-weight: bold; margin-bottom: 4px; }
+.profile-panel .profile-email { font-size: 13px; color: #555; margin-bottom: 10px; }
+.profile-panel .profile-logout {
+  background-color: #4CAF50;
+  border: none;
+  color: white;
+  padding: 8px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.profile-panel .profile-logout:hover { background-color: #45a049; }
+
+/* Dark theme — profile */
+body.theme-dark .profile-panel {
+  background-color: #111; border-color: #333; color: #fff;
+}
+body.theme-dark .profile-panel .profile-email { color: #aaa; }
+body.theme-dark .profile-btn .profile-initial,
+body.theme-dark .profile-btn .profile-icon { background: #2e7d32; }

@@ -32,10 +32,22 @@ type AppClaims struct {
 }
 
 type sessionData struct {
-	Token string `json:"token"`
-	Sub   string `json:"sub"`
-	Scope string `json:"scope"`
-	Exp   int64  `json:"exp"`
+	Token   string `json:"token"`
+	Sub     string `json:"sub"`
+	Scope   string `json:"scope"`
+	Exp     int64  `json:"exp"`
+	Picture string `json:"picture,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Email   string `json:"email,omitempty"`
+}
+
+func claimString(claims map[string]interface{}, key string) string {
+	if v, ok := claims[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 func (app *App) SetupAuthRoutes() {
@@ -92,10 +104,13 @@ func (app *App) googleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := app.createSession(w, sessionData{
-		Token: token,
-		Sub:   payload.Subject,
-		Scope: scope,
-		Exp:   exp,
+		Token:   token,
+		Sub:     payload.Subject,
+		Scope:   scope,
+		Exp:     exp,
+		Picture: claimString(payload.Claims, "picture"),
+		Name:    claimString(payload.Claims, "name"),
+		Email:   claimString(payload.Claims, "email"),
 	}); err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to create session")
 		return
@@ -163,10 +178,13 @@ func (app *App) authMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"token": session.Token,
-		"sub":   session.Sub,
-		"scope": session.Scope,
-		"exp":   session.Exp,
+		"token":   session.Token,
+		"sub":     session.Sub,
+		"scope":   session.Scope,
+		"exp":     session.Exp,
+		"picture": session.Picture,
+		"name":    session.Name,
+		"email":   session.Email,
 	})
 }
 
