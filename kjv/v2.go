@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,23 @@ const (
 	defaultOpenSearchIndex = "kjv_v2"
 	defaultSynonymsSet     = "kjv_synonyms"
 )
+
+// bookOrderIndex maps a book name to its canonical 0-based position.
+// Built once at package init from BooksCanonicalOrder.
+var bookOrderIndex = func() map[string]int {
+	m := make(map[string]int, len(BooksCanonicalOrder))
+	for i, b := range BooksCanonicalOrder {
+		m[b] = i
+	}
+	return m
+}()
+
+func bookIdx(name string) int {
+	if i, ok := bookOrderIndex[name]; ok {
+		return i
+	}
+	return len(BooksCanonicalOrder) // unknown books sort last
+}
 
 type v2SearchResult struct {
 	Book      string   `json:"book"`
@@ -127,6 +145,19 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, "Failed to parse search response")
 		return
 	}
+
+	// Surface results in canonical reading order (Genesis -> Revelation),
+	// not by OpenSearch _score. Stable so equal verses keep relevance order.
+	sort.SliceStable(results, func(i, j int) bool {
+		bi, bj := bookIdx(results[i].Book), bookIdx(results[j].Book)
+		if bi != bj {
+			return bi < bj
+		}
+		if results[i].Chapter != results[j].Chapter {
+			return results[i].Chapter < results[j].Chapter
+		}
+		return results[i].Verse < results[j].Verse
+	})
 
 	out := v2SearchResponse{
 		Status: "ok",
