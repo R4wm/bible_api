@@ -28,3 +28,6 @@ web/dist/
 .env.*
 web/.env
 web/.env.*
+
+# compiled binary
+/bible_api
