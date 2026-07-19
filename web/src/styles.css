@@ -95,6 +95,15 @@ h1, h2 {
   font-size: 14px;
 }
 
+.settings-panel strong {
+  display: block;
+  margin: 10px 0 2px;
+}
+
+.settings-panel strong:first-child {
+  margin-top: 0;
+}
+
 .settings-panel input[type="radio"] {
   margin-right: 8px;
 }
@@ -197,6 +206,21 @@ h1, h2 {
   margin-bottom: 10px;
 }
 
+.recent-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 4px 0 14px;
+}
+
+.recent-label {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-right: 4px;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -292,6 +316,12 @@ h1, h2 {
   margin: 4px 0;
 }
 
+.verse-text.selected-verse {
+  background: rgba(0, 149, 205, 0.14);
+  border-left: 3px solid #0095cd;
+  padding: 6px 8px;
+}
+
 .verse-num {
   font-weight: bold;
 }
@@ -337,6 +367,9 @@ body.theme-dark .chart-container { background: #111; border-color: #333; }
 body.theme-dark .result { border-bottom-color: #333; }
 body.theme-dark .result .meta { color: #ddd; }
 body.theme-dark .result .text mark { background: #553; color: #fff; }
+body.theme-dark .verse-text.selected-verse {
+  background: rgba(0, 149, 205, 0.22);
+}
 
 /* Muted text surfaces */
 body.theme-dark .empty,
