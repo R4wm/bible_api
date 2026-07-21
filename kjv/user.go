@@ -10,9 +10,7 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-// maxHistoryPages is how many recently-read pages we keep per user.
-// A "page" is a (book, chapter) pair.
-const maxHistoryPages = 5
+const maxHistoryEntries = 100
 
 // userSettings holds the per-user preferences that sync across devices.
 // Mirrors the client-side settings currently kept only in localStorage.
@@ -29,6 +27,12 @@ type readPage struct {
 	TS      int64  `json:"ts"`
 }
 
+// searchHistory is one completed full-text search for a user.
+type searchHistory struct {
+	Query string `json:"query"`
+	TS    int64  `json:"ts"`
+}
+
 func (app *App) SetupUserRoutes() {
 	// Authenticated via the session cookie (see getSession), same as /auth/me.
 	// No JWT scope is required: any logged-in user manages their own data.
@@ -36,6 +40,7 @@ func (app *App) SetupUserRoutes() {
 	app.Router.HandleFunc("/user/settings", app.putUserSettings).Methods("PUT")
 	app.Router.HandleFunc("/user/history", app.getUserHistory).Methods("GET")
 	app.Router.HandleFunc("/user/history", app.postUserHistory).Methods("POST")
+	app.Router.HandleFunc("/user/history/searches", app.postUserSearchHistory).Methods("POST")
 }
 
 // currentSub returns the authenticated user's Google subject, or false if the
@@ -48,8 +53,9 @@ func (app *App) currentSub(r *http.Request) (string, bool) {
 	return session.Sub, true
 }
 
-func settingsKey(sub string) string { return "user:" + sub + ":settings" }
-func historyKey(sub string) string  { return "user:" + sub + ":history" }
+func settingsKey(sub string) string      { return "user:" + sub + ":settings" }
+func historyKey(sub string) string       { return "user:" + sub + ":history" }
+func searchHistoryKey(sub string) string { return "user:" + sub + ":search-history" }
 
 func (app *App) getUserSettings(w http.ResponseWriter, r *http.Request) {
 	sub, ok := app.currentSub(r)
@@ -106,7 +112,12 @@ func (app *App) getUserHistory(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, "failed to load history")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"pages": pages})
+	searches, err := app.loadSearchHistory(sub)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to load search history")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"pages": pages, "searches": searches})
 }
 
 func (app *App) postUserHistory(w http.ResponseWriter, r *http.Request) {
@@ -146,8 +157,8 @@ func (app *App) postUserHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	// Prepend the just-read page (most-recent-first) and cap the list.
 	updated := append([]readPage{{Book: book, Chapter: req.Chapter, TS: time.Now().Unix()}}, filtered...)
-	if len(updated) > maxHistoryPages {
-		updated = updated[:maxHistoryPages]
+	if len(updated) > maxHistoryEntries {
+		updated = updated[:maxHistoryEntries]
 	}
 
 	payload, _ := json.Marshal(updated)
@@ -156,6 +167,50 @@ func (app *App) postUserHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"pages": updated})
+}
+
+func (app *App) postUserSearchHistory(w http.ResponseWriter, r *http.Request) {
+	sub, ok := app.currentSub(r)
+	if !ok {
+		jsonError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req struct {
+		Query string `json:"query"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	query := strings.TrimSpace(req.Query)
+	if query == "" {
+		jsonError(w, http.StatusBadRequest, "query is required")
+		return
+	}
+
+	searches, err := app.loadSearchHistory(sub)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to load search history")
+		return
+	}
+	filtered := searches[:0]
+	for _, entry := range searches {
+		if strings.EqualFold(entry.Query, query) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	updated := append([]searchHistory{{Query: query, TS: time.Now().Unix()}}, filtered...)
+	if len(updated) > maxHistoryEntries {
+		updated = updated[:maxHistoryEntries]
+	}
+
+	payload, _ := json.Marshal(updated)
+	if err := app.Redis.Set(context.Background(), searchHistoryKey(sub), payload, 0).Err(); err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to save search history")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"searches": updated})
 }
 
 // loadHistory returns the user's reading history, most-recent-first, or an
@@ -174,4 +229,19 @@ func (app *App) loadHistory(sub string) ([]readPage, error) {
 		return []readPage{}, nil
 	}
 	return pages, nil
+}
+
+func (app *App) loadSearchHistory(sub string) ([]searchHistory, error) {
+	val, err := app.Redis.Get(context.Background(), searchHistoryKey(sub)).Result()
+	if err == redis.Nil {
+		return []searchHistory{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var searches []searchHistory
+	if err := json.Unmarshal([]byte(val), &searches); err != nil {
+		return []searchHistory{}, nil
+	}
+	return searches, nil
 }

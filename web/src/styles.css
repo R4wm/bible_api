@@ -125,6 +125,65 @@ h1, h2 {
   margin-right: 8px;
 }
 
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.settings-tabs button {
+  border: 1px solid #0076a3;
+  background: #fff;
+  color: #12536f;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.settings-tabs button[aria-selected="true"] {
+  background: #c3dfef;
+  font-weight: 600;
+}
+
+.history-tab {
+  display: grid;
+  gap: 6px;
+}
+
+.history-tab strong {
+  margin-top: 8px;
+}
+
+.history-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #d4d4d4;
+  background: transparent;
+  padding: 7px 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.history-entry:hover span {
+  text-decoration: underline;
+}
+
+.history-entry time {
+  flex: 0 0 auto;
+  color: #666;
+  font-size: 12px;
+}
+
+.history-empty {
+  margin: 0;
+  color: #666;
+  font-size: 13px;
+}
+
 /* Grid layout for books and chapters */
 .books-grid {
   display: grid;
@@ -236,6 +295,10 @@ h1, h2 {
   justify-content: center;
   gap: 4px;
   margin-bottom: 10px;
+}
+
+.suggestions-sentinel {
+  min-height: 1px;
 }
 
 .recent-row {

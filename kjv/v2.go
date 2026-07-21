@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,23 +21,6 @@ const (
 	defaultOpenSearchIndex = "kjv_v2"
 	defaultSynonymsSet     = "kjv_synonyms"
 )
-
-// bookOrderIndex maps a book name to its canonical 0-based position.
-// Built once at package init from BooksCanonicalOrder.
-var bookOrderIndex = func() map[string]int {
-	m := make(map[string]int, len(BooksCanonicalOrder))
-	for i, b := range BooksCanonicalOrder {
-		m[b] = i
-	}
-	return m
-}()
-
-func bookIdx(name string) int {
-	if i, ok := bookOrderIndex[name]; ok {
-		return i
-	}
-	return len(BooksCanonicalOrder) // unknown books sort last
-}
 
 type v2SearchResult struct {
 	Book      string   `json:"book"`
@@ -146,19 +128,6 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Surface results in canonical reading order (Genesis -> Revelation),
-	// not by OpenSearch _score. Stable so equal verses keep relevance order.
-	sort.SliceStable(results, func(i, j int) bool {
-		bi, bj := bookIdx(results[i].Book), bookIdx(results[j].Book)
-		if bi != bj {
-			return bi < bj
-		}
-		if results[i].Chapter != results[j].Chapter {
-			return results[i].Chapter < results[j].Chapter
-		}
-		return results[i].Verse < results[j].Verse
-	})
-
 	out := v2SearchResponse{
 		Status: "ok",
 		Meta: map[string]interface{}{
@@ -192,26 +161,12 @@ func (app *App) suggestV2(w http.ResponseWriter, r *http.Request) {
 	if size > 50 {
 		size = 50
 	}
-
-	body := map[string]interface{}{
-		"query": map[string]interface{}{
-			"match_phrase_prefix": map[string]interface{}{
-				"text": query,
-			},
-		},
-		"size": size,
-		"_source": []string{
-			"text",
-			"book",
-			"chapter",
-			"verse",
-		},
-		"highlight": map[string]interface{}{
-			"fields": map[string]interface{}{
-				"text": map[string]interface{}{},
-			},
-		},
+	from := parseIntDefault(r.URL.Query().Get("from"), 0)
+	if from < 0 {
+		from = 0
 	}
+
+	body := buildSuggestSearchBody(query, size, from)
 	bodyBytes, _ := json.Marshal(body)
 
 	respBody, status, err := app.doOpenSearchRequest("POST", fmt.Sprintf("/%s/_search", app.OpenSearchIndex), bodyBytes)
@@ -235,6 +190,8 @@ func (app *App) suggestV2(w http.ResponseWriter, r *http.Request) {
 		Meta: map[string]interface{}{
 			"query":   query,
 			"count":   len(suggestions),
+			"from":    from,
+			"size":    size,
 			"took_ms": took,
 		},
 		Data: map[string]interface{}{
@@ -242,6 +199,32 @@ func (app *App) suggestV2(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func buildSuggestSearchBody(query string, size, from int) map[string]interface{} {
+	return map[string]interface{}{
+		"query": map[string]interface{}{
+			"match_phrase_prefix": map[string]interface{}{
+				"text": query,
+			},
+		},
+		"from": from,
+		"size": size,
+		"sort": []interface{}{
+			map[string]interface{}{"ordinal_verse": map[string]string{"order": "asc"}},
+		},
+		"_source": []string{
+			"text",
+			"book",
+			"chapter",
+			"verse",
+		},
+		"highlight": map[string]interface{}{
+			"fields": map[string]interface{}{
+				"text": map[string]interface{}{},
+			},
+		},
+	}
 }
 
 // suggestCompletion handles GET /bible/suggest?q=... using the OpenSearch
@@ -415,8 +398,13 @@ func buildSearchBody(query string, size, from int, filters map[string]string) ma
 		"query": map[string]interface{}{
 			"bool": boolQuery,
 		},
-		"from":             from,
-		"size":             size,
+		"from": from,
+		"size": size,
+		// ordinal_verse is assigned during indexing and gives a stable
+		// Genesis-to-Revelation order across all result pages.
+		"sort": []interface{}{
+			map[string]interface{}{"ordinal_verse": map[string]string{"order": "asc"}},
+		},
 		"track_total_hits": true,
 		"highlight": map[string]interface{}{
 			"fields": map[string]interface{}{
