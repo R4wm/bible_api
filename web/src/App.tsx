@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 declare const Chart: any;
 
 const defaultScope = "synonyms:write";
+const suggestionPageSize = 20;
 
 const BOOKS_CANONICAL_ORDER = [
   "GENESIS","EXODUS","LEVITICUS","NUMBERS","DEUTERONOMY",
@@ -78,7 +79,26 @@ type ReadVerse = {
   text: string;
 };
 
+type RecentPage = {
+  book: string;
+  chapter: number;
+  ts?: number;
+};
+
+type SearchHistory = {
+  query: string;
+  ts?: number;
+};
+
+type VerseOpenMode = "new-tab" | "same-tab";
+
+type VerseSelection = {
+  verses: number[];
+  label: string;
+};
+
 type View = "books" | "chapters" | "reading" | "search";
+type SettingsTab = "preferences" | "history";
 
 type GoogleProfile = { picture?: string; name?: string; email?: string };
 
@@ -87,6 +107,69 @@ const decodeJwtPayload = (jwt: string): any => {
     const seg = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
     return JSON.parse(atob(seg));
   } catch { return {}; }
+};
+
+const defaultVerseOpenMode: VerseOpenMode = "new-tab";
+
+const storedVerseOpenMode = (): VerseOpenMode =>
+  localStorage.getItem("bible-verse-open-mode") === "same-tab" ? "same-tab" : defaultVerseOpenMode;
+
+const isVerseOpenMode = (value: unknown): value is VerseOpenMode =>
+  value === "new-tab" || value === "same-tab";
+
+const positiveIntParam = (value: string | null): number => {
+  const parsed = Number.parseInt(value || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const formatHistoryTime = (timestamp?: number): string =>
+  timestamp ? new Date(timestamp * 1000).toLocaleString() : "";
+
+const parseVerseSelection = (value: string | null): VerseSelection => {
+  const raw = (value || "").trim();
+  if (!raw) return { verses: [], label: "" };
+
+  const selected = new Set<number>();
+  const normalized = raw.replace(/[–—]/g, "-");
+
+  normalized.split(",").forEach((part) => {
+    const token = part.trim();
+    if (!token) return;
+
+    const range = token.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      const start = Number.parseInt(range[1], 10);
+      const end = Number.parseInt(range[2], 10);
+      const low = Math.min(start, end);
+      const high = Math.max(start, end);
+      for (let n = low; n <= high && selected.size < 250; n += 1) {
+        if (n > 0) selected.add(n);
+      }
+      return;
+    }
+
+    const single = token.match(/^\d+$/);
+    if (single) {
+      const n = Number.parseInt(token, 10);
+      if (n > 0) selected.add(n);
+    }
+  });
+
+  const verses = Array.from(selected).sort((a, b) => a - b);
+  return {
+    verses,
+    label: verses.length > 0 ? raw.replace(/\s+/g, "") : "",
+  };
+};
+
+const v2ReaderURL = (book?: string, chapter?: number, verse?: number | string): string => {
+  const params = new URLSearchParams();
+  if (book) params.set("book", book);
+  if (chapter && chapter > 0) params.set("chapter", String(chapter));
+  if (typeof verse === "number" && verse > 0) params.set("verse", String(verse));
+  if (typeof verse === "string" && verse.trim()) params.set("verse", verse.trim());
+  const query = params.toString();
+  return query ? `/v2/?${query}` : "/v2/";
 };
 
 export default function App() {
@@ -98,11 +181,16 @@ export default function App() {
   const [selectedBook, setSelectedBook] = useState("");
   const [chapters, setChapters] = useState<number[]>([]);
   const [selectedChapter, setSelectedChapter] = useState(0);
+  const [selectedVerses, setSelectedVerses] = useState<number[]>([]);
+  const [selectedVerseLabel, setSelectedVerseLabel] = useState("");
   const [reading, setReading] = useState<ReadVerse[]>([]);
 
   const [query, setQuery] = useState("");
   const [suggestQuery, setSuggestQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestionOffset, setSuggestionOffset] = useState(0);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [hasMoreSuggestions, setHasMoreSuggestions] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [bookCounts, setBookCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
@@ -118,6 +206,13 @@ export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(
     () => localStorage.getItem("bible-theme") === "light" ? "light" : "dark"
   );
+  const [verseOpenMode, setVerseOpenMode] = useState<VerseOpenMode>(storedVerseOpenMode);
+  const [recent, setRecent] = useState<RecentPage[]>([]);
+  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("preferences");
+  // True once we've pulled server-side settings for the logged-in user, so we
+  // don't push local defaults back up before knowing what the server has.
+  const settingsHydrated = useRef(false);
 
   const hasToken = token.length > 0;
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -128,8 +223,11 @@ export default function App() {
   const profileBtnRef = useRef<HTMLButtonElement>(null);
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<any>(null);
+  const suggestionsSentinelRef = useRef<HTMLDivElement>(null);
+  const suggestionRequestRef = useRef(0);
 
   const fontClasses = ["font-blackletter", "font-renaissance", "font-serif"];
+  const selectedVerseSet = useMemo(() => new Set(selectedVerses), [selectedVerses]);
 
   // Apply font class on mount and when font changes
   useEffect(() => {
@@ -145,13 +243,56 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    localStorage.setItem("bible-verse-open-mode", verseOpenMode);
+  }, [verseOpenMode]);
+
+  // On login, pull the user's saved settings + reading history from the server.
+  // Server settings win over local defaults so preferences follow the account.
+  useEffect(() => {
+    if (!hasToken) {
+      settingsHydrated.current = false;
+      setRecent([]);
+      setSearchHistory([]);
+      setSettingsTab("preferences");
+      return;
+    }
+    fetch("/user/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.font) setFont(data.font);
+        if (data?.theme === "light" || data?.theme === "dark") setTheme(data.theme);
+        if (isVerseOpenMode(data?.verse_open_mode)) setVerseOpenMode(data.verse_open_mode);
+      })
+      .catch(() => {})
+      .finally(() => { settingsHydrated.current = true; });
+    fetch("/user/history")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data?.pages)) setRecent(data.pages);
+        if (Array.isArray(data?.searches)) setSearchHistory(data.searches);
+      })
+      .catch(() => {});
+  }, [hasToken]);
+
+  // Push settings changes to the server, but only after hydration so we never
+  // overwrite saved preferences with the local defaults on first load.
+  useEffect(() => {
+    if (!hasToken || !settingsHydrated.current) return;
+    fetch("/user/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ font, theme, verse_open_mode: verseOpenMode }),
+    }).catch(() => {});
+  }, [font, theme, verseOpenMode, hasToken]);
+
+  useEffect(() => {
     if (view === "reading" && selectedBook && selectedChapter) {
       const abbr = BOOK_ABBREVIATIONS[selectedBook] ?? selectedBook;
-      document.title = `${abbr} ${selectedChapter}`;
+      document.title = `${abbr} ${selectedChapter}${selectedVerseLabel ? `:${selectedVerseLabel}` : ""}`;
     } else {
       document.title = "Bible API";
     }
-  }, [view, selectedBook, selectedChapter]);
+  }, [view, selectedBook, selectedChapter, selectedVerseLabel]);
 
   // Close menu on Escape and outside click
   useEffect(() => {
@@ -178,6 +319,17 @@ export default function App() {
       document.removeEventListener("click", onClick);
     };
   }, []);
+
+  useEffect(() => {
+    if (view !== "reading" || selectedVerses.length === 0 || reading.length === 0) return;
+    const firstSelectedVerse = selectedVerses[0];
+    window.setTimeout(() => {
+      document.getElementById(`verse-${firstSelectedVerse}`)?.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+    }, 50);
+  }, [view, selectedVerses, reading]);
 
   // Render chart when search results change
   useEffect(() => {
@@ -321,37 +473,137 @@ export default function App() {
       .catch(() => setBooks([]));
   }, []);
 
-  const loadChapters = (book: string) => {
+  const pushReaderLocation = (book?: string, chapter?: number, verse?: string) => {
+    const url = v2ReaderURL(book, chapter, verse);
+    if (`${window.location.pathname}${window.location.search}` !== url) {
+      window.history.pushState(null, "", url);
+    }
+  };
+
+  const showBooks = (updateURL = true) => {
+    setSelectedBook("");
+    setSelectedChapter(0);
+    setSelectedVerses([]);
+    setSelectedVerseLabel("");
+    setView("books");
+    if (updateURL) pushReaderLocation();
+  };
+
+  const loadChapters = (book: string, updateURL = true) => {
     setSelectedBook(book);
+    setSelectedChapter(0);
+    setSelectedVerses([]);
+    setSelectedVerseLabel("");
     setView("chapters");
+    if (updateURL) pushReaderLocation(book);
     fetch(`/bible/list_chapters/${encodeURIComponent(book)}?json=true`)
       .then((res) => res.json())
       .then((data: ChaptersResponse) => setChapters(data.Chapters || []))
       .catch(() => setChapters([]));
   };
 
-  const loadChapter = (chapter: number) => {
-    setSelectedChapter(chapter);
-    setView("reading");
-    fetch(`/bible/${encodeURIComponent(selectedBook)}/${chapter}?json=true`)
+  // Record a read page to the server and reflect the returned list locally.
+  // No-op when signed out so anonymous activity is never retained.
+  const recordRead = (book: string, chapter: number) => {
+    if (!hasToken) return;
+    fetch("/user/history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ book, chapter }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (Array.isArray(data?.pages)) setRecent(data.pages); })
+      .catch(() => {});
+  };
+
+  const recordSearch = (searchQuery: string) => {
+    if (!hasToken) return;
+    fetch("/user/history/searches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: searchQuery }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (Array.isArray(data?.searches)) setSearchHistory(data.searches); })
+      .catch(() => {});
+  };
+
+  const loadVerses = (book: string, chapter: number) => {
+    fetch(`/bible/${encodeURIComponent(book)}/${chapter}?json=true`)
       .then((res) => res.json())
       .then((data: ChapterResponse) => {
         setReading((data.Verses || []).map((text, i) => ({ number: i + 1, text })));
       })
       .catch(() => setReading([]));
+    recordRead(book, chapter);
   };
 
-  const runSearch = async () => {
-    if (!query.trim()) return;
+  const loadChapter = (chapter: number) => {
+    setSelectedChapter(chapter);
+    setSelectedVerses([]);
+    setSelectedVerseLabel("");
+    setView("reading");
+    pushReaderLocation(selectedBook, chapter);
+    loadVerses(selectedBook, chapter);
+  };
+
+  // Jump straight to a (book, chapter) — used by the "Continue reading" list,
+  // which may target a book whose chapters aren't loaded yet.
+  const openPage = (
+    book: string,
+    chapter: number,
+    selection: VerseSelection = { verses: [], label: "" },
+    updateURL = true,
+  ) => {
+    setSelectedBook(book);
+    setSelectedChapter(chapter);
+    setSelectedVerses(selection.verses);
+    setSelectedVerseLabel(selection.label);
+    setView("reading");
+    if (updateURL) pushReaderLocation(book, chapter, selection.label);
+    fetch(`/bible/list_chapters/${encodeURIComponent(book)}?json=true`)
+      .then((res) => res.json())
+      .then((data: ChaptersResponse) => setChapters(data.Chapters || []))
+      .catch(() => setChapters([]));
+    loadVerses(book, chapter);
+  };
+
+  // Restore a book, chapter, and optional verse selection from the URL on
+  // startup and whenever the user navigates with the browser controls.
+  useEffect(() => {
+    const restoreLocation = () => {
+      const params = new URLSearchParams(window.location.search);
+      const book = params.get("book")?.trim();
+      const chapter = positiveIntParam(params.get("chapter"));
+      const selection = parseVerseSelection(params.get("verse") || params.get("verses"));
+
+      if (!book) {
+        showBooks(false);
+      } else if (chapter > 0) {
+        openPage(book, chapter, selection, false);
+      } else {
+        loadChapters(book, false);
+      }
+    };
+
+    restoreLocation();
+    window.addEventListener("popstate", restoreLocation);
+    return () => window.removeEventListener("popstate", restoreLocation);
+  }, []);
+
+  const runSearch = async (searchTerm = query) => {
+    const normalizedQuery = searchTerm.trim();
+    if (!normalizedQuery) return;
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(`/bible/v2/search?q=${encodeURIComponent(query)}`);
+      const resp = await fetch(`/bible/v2/search?q=${encodeURIComponent(normalizedQuery)}`);
       if (!resp.ok) throw new Error("Search failed");
       const data = await resp.json();
       setResults(data?.data?.results || []);
       setBookCounts(data?.data?.book_counts || {});
       setView("search");
+      recordSearch(normalizedQuery);
     } catch {
       setError("Search failed. Check the API.");
     } finally {
@@ -360,25 +612,87 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!suggestQuery.trim()) { setSuggestions([]); return; }
+    const query = suggestQuery.trim();
+    const requestID = ++suggestionRequestRef.current;
+
+    if (!query) {
+      setSuggestions([]);
+      setSuggestionOffset(0);
+      setHasMoreSuggestions(false);
+      setSuggestionsLoading(false);
+      return;
+    }
+
+    setSuggestions([]);
+    setSuggestionOffset(0);
+    setHasMoreSuggestions(false);
     const timer = window.setTimeout(async () => {
+      setSuggestionsLoading(true);
       try {
-        const resp = await fetch(`/bible/v2/suggest?q=${encodeURIComponent(suggestQuery)}`);
+        const resp = await fetch(`/bible/v2/suggest?q=${encodeURIComponent(query)}&n=${suggestionPageSize}&from=0`);
         if (!resp.ok) return;
         const data = await resp.json();
-        setSuggestions(data?.data?.suggestions || []);
-      } catch { setSuggestions([]); }
+        if (requestID !== suggestionRequestRef.current) return;
+        const nextSuggestions = data?.data?.suggestions || [];
+        setSuggestions(nextSuggestions);
+        setSuggestionOffset(nextSuggestions.length);
+        setHasMoreSuggestions(nextSuggestions.length === suggestionPageSize);
+      } catch {
+        if (requestID === suggestionRequestRef.current) {
+          setSuggestions([]);
+          setHasMoreSuggestions(false);
+        }
+      } finally {
+        if (requestID === suggestionRequestRef.current) setSuggestionsLoading(false);
+      }
     }, 200);
     return () => window.clearTimeout(timer);
   }, [suggestQuery]);
 
+  useEffect(() => {
+    const sentinel = suggestionsSentinelRef.current;
+    const query = suggestQuery.trim();
+    if (!sentinel || !query || !hasMoreSuggestions || suggestionsLoading) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0].isIntersecting) return;
+      observer.unobserve(sentinel);
+      const requestID = suggestionRequestRef.current;
+      const from = suggestionOffset;
+      setSuggestionsLoading(true);
+
+      fetch(`/bible/v2/suggest?q=${encodeURIComponent(query)}&n=${suggestionPageSize}&from=${from}`)
+        .then((resp) => (resp.ok ? resp.json() : Promise.reject(new Error("Suggestion request failed"))))
+        .then((data) => {
+          if (requestID !== suggestionRequestRef.current) return;
+          const nextSuggestions: Suggestion[] = data?.data?.suggestions || [];
+          setSuggestions((current) => {
+            const known = new Set(current.map((s) => `${s.book}-${s.chapter}-${s.verse}-${s.text}`));
+            return [...current, ...nextSuggestions.filter((s) => !known.has(`${s.book}-${s.chapter}-${s.verse}-${s.text}`))];
+          });
+          setSuggestionOffset(from + nextSuggestions.length);
+          setHasMoreSuggestions(nextSuggestions.length === suggestionPageSize);
+        })
+        .catch(() => {
+          if (requestID === suggestionRequestRef.current) setHasMoreSuggestions(false);
+        })
+        .finally(() => {
+          if (requestID === suggestionRequestRef.current) setSuggestionsLoading(false);
+        });
+    }, { rootMargin: "240px" });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreSuggestions, suggestionOffset, suggestionsLoading, suggestQuery]);
+
   const openSuggestion = (suggestion?: Suggestion) => {
     if (!suggestion?.book || !suggestion.chapter || !suggestion.verse) return;
-    window.open(
-      `/bible/${encodeURIComponent(suggestion.book)}/${suggestion.chapter}/${suggestion.verse}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    const url = v2ReaderURL(suggestion.book, suggestion.chapter, suggestion.verse);
+    if (verseOpenMode === "new-tab") {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    window.location.href = url;
   };
 
   const logout = async () => {
@@ -455,7 +769,7 @@ export default function App() {
       {/* Menu panel */}
       {menuOpen && (
         <div className="menu-panel" ref={menuRef}>
-          <button onClick={() => { setView("books"); setMenuOpen(false); }}>Books</button>
+          <button onClick={() => { showBooks(); setMenuOpen(false); }}>Books</button>
           <button onClick={() => { setView("search"); searchInputRef.current?.focus(); setMenuOpen(false); }}>Search</button>
           <a href="/docs">Docs</a>
           <button onClick={() => setSettingsOpen(!settingsOpen)}>Settings</button>
@@ -466,40 +780,101 @@ export default function App() {
       {/* Settings panel */}
       {settingsOpen && (
         <div className="settings-panel open" ref={settingsRef}>
-          <strong>Font</strong>
-          {[
-            { value: "default", label: "Default" },
-            { value: "blackletter", label: "Blackletter (Gothic)" },
-            { value: "renaissance", label: "Renaissance" },
-            { value: "serif", label: "Classic Serif" },
-          ].map((opt) => (
-            <label key={opt.value}>
-              <input
-                type="radio"
-                name="font-choice"
-                value={opt.value}
-                checked={font === opt.value}
-                onChange={() => setFont(opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-          <strong>Theme</strong>
-          {[
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-          ].map((opt) => (
-            <label key={opt.value}>
-              <input
-                type="radio"
-                name="theme-choice"
-                value={opt.value}
-                checked={theme === opt.value}
-                onChange={() => setTheme(opt.value as "light" | "dark")}
-              />
-              {opt.label}
-            </label>
-          ))}
+          {hasToken && (
+            <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+              <button role="tab" aria-selected={settingsTab === "preferences"} onClick={() => setSettingsTab("preferences")}>Preferences</button>
+              <button role="tab" aria-selected={settingsTab === "history"} onClick={() => setSettingsTab("history")}>History</button>
+            </div>
+          )}
+          {settingsTab === "preferences" && (
+            <>
+              <strong>Font</strong>
+              {[
+                { value: "default", label: "Default" },
+                { value: "blackletter", label: "Blackletter (Gothic)" },
+                { value: "renaissance", label: "Renaissance" },
+                { value: "serif", label: "Classic Serif" },
+              ].map((opt) => (
+                <label key={opt.value}>
+                  <input
+                    type="radio"
+                    name="font-choice"
+                    value={opt.value}
+                    checked={font === opt.value}
+                    onChange={() => setFont(opt.value)}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+              <strong>Theme</strong>
+              {[
+                { value: "light", label: "Light" },
+                { value: "dark", label: "Dark" },
+              ].map((opt) => (
+                <label key={opt.value}>
+                  <input
+                    type="radio"
+                    name="theme-choice"
+                    value={opt.value}
+                    checked={theme === opt.value}
+                    onChange={() => setTheme(opt.value as "light" | "dark")}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+              <strong>Verse links</strong>
+              {[
+                { value: "new-tab", label: "Open in new tab" },
+                { value: "same-tab", label: "Use current tab" },
+              ].map((opt) => (
+                <label key={opt.value}>
+                  <input
+                    type="radio"
+                    name="verse-open-mode"
+                    value={opt.value}
+                    checked={verseOpenMode === opt.value}
+                    onChange={() => setVerseOpenMode(opt.value as VerseOpenMode)}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </>
+          )}
+          {hasToken && settingsTab === "history" && (
+            <div className="history-tab" role="tabpanel">
+              <strong>Searches</strong>
+              {searchHistory.length === 0 && <p className="history-empty">No searches yet.</p>}
+              {searchHistory.map((entry) => (
+                <button
+                  key={`${entry.query}-${entry.ts}`}
+                  className="history-entry"
+                  onClick={() => {
+                    setQuery(entry.query);
+                    runSearch(entry.query);
+                    setSettingsOpen(false);
+                  }}
+                >
+                  <span>{entry.query}</span>
+                  <time>{formatHistoryTime(entry.ts)}</time>
+                </button>
+              ))}
+              <strong>Reading and navigation</strong>
+              {recent.length === 0 && <p className="history-empty">No pages read yet.</p>}
+              {recent.map((page) => (
+                <button
+                  key={`${page.book}-${page.chapter}-${page.ts}`}
+                  className="history-entry"
+                  onClick={() => {
+                    openPage(page.book, page.chapter);
+                    setSettingsOpen(false);
+                  }}
+                >
+                  <span>{BOOK_ABBREVIATIONS[page.book] ?? page.book} {page.chapter}</span>
+                  <time>{formatHistoryTime(page.ts)}</time>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -515,28 +890,31 @@ export default function App() {
         />
       </div>
       {suggestions.length > 0 && (
-        <div className="suggestions">
-          {suggestions.map((s) => (
-            <button key={`${s.book ?? ""}-${s.chapter ?? ""}-${s.verse ?? ""}-${s.text}-${s.score}`} className="chip" onClick={() => openSuggestion(s)}>
-              {s.book && s.chapter && s.verse && (
-                <span className="chip-ref">
-                  {BOOK_ABBREVIATIONS[s.book] ?? s.book} {s.chapter}:{s.verse}
-                </span>
-              )}
-              {s.book && s.chapter && s.verse && <span className="chip-separator">—</span>}
-              <span className="chip-text">{s.text}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="suggestions">
+            {suggestions.map((s) => (
+              <button key={`${s.book ?? ""}-${s.chapter ?? ""}-${s.verse ?? ""}-${s.text}-${s.score}`} className="chip" onClick={() => openSuggestion(s)}>
+                {s.book && s.chapter && s.verse && (
+                  <span className="chip-ref">
+                    {BOOK_ABBREVIATIONS[s.book] ?? s.book} {s.chapter}:{s.verse}
+                  </span>
+                )}
+                {s.book && s.chapter && s.verse && <span className="chip-separator">—</span>}
+                <span className="chip-text">{s.text}</span>
+              </button>
+            ))}
+          </div>
+          {hasMoreSuggestions && <div className="suggestions-sentinel" ref={suggestionsSentinelRef} aria-busy={suggestionsLoading} />}
+        </>
       )}
       {error && <div className="error">{error}</div>}
 
       {/* Navigation */}
       {view !== "books" && (
         <div className="nav-bar">
-          <button className="nav-btn" onClick={() => setView("books")}>Books Menu</button>
+          <button className="nav-btn" onClick={() => showBooks()}>Books Menu</button>
           {view === "reading" && (
-            <button className="nav-btn" onClick={() => setView("chapters")}>{selectedBook}</button>
+            <button className="nav-btn" onClick={() => loadChapters(selectedBook)}>{selectedBook}</button>
           )}
           {view === "reading" && selectedChapter > 1 && (
             <button className="nav-btn" onClick={() => loadChapter(selectedChapter - 1)}>&lt;</button>
@@ -544,6 +922,22 @@ export default function App() {
           {view === "reading" && selectedChapter < chapters.length && (
             <button className="nav-btn" onClick={() => loadChapter(selectedChapter + 1)}>&gt;</button>
           )}
+        </div>
+      )}
+
+      {/* Continue reading: last pages read (signed-in users) */}
+      {view === "books" && recent.length > 0 && (
+        <div className="recent-row">
+          <span className="recent-label">Continue reading</span>
+          {recent.slice(0, 5).map((p) => (
+            <button
+              key={`${p.book}-${p.chapter}`}
+              className="chip"
+              onClick={() => openPage(p.book, p.chapter)}
+            >
+              {BOOK_ABBREVIATIONS[p.book] ?? p.book} {p.chapter}
+            </button>
+          ))}
         </div>
       )}
 
@@ -575,9 +969,13 @@ export default function App() {
       {/* Reading */}
       {view === "reading" && (
         <>
-          <h2>{selectedBook} {selectedChapter}</h2>
+          <h2>{selectedBook} {selectedChapter}{selectedVerseLabel ? `:${selectedVerseLabel}` : ""}</h2>
           {reading.map((v) => (
-            <p key={v.number} className="verse-text">
+            <p
+              key={v.number}
+              id={`verse-${v.number}`}
+              className={`verse-text${selectedVerseSet.has(v.number) ? " selected-verse" : ""}`}
+            >
               <span className="verse-num">{v.number}</span> {v.text}
             </p>
           ))}
@@ -595,7 +993,11 @@ export default function App() {
           {results.map((item) => (
             <div key={`${item.book}-${item.chapter}-${item.verse}`} className="result">
               <div className="meta">
-                <a href={`/bible/${item.book}/${item.chapter}/${item.verse}?json=false`}>
+                <a
+                  href={v2ReaderURL(item.book, item.chapter, item.verse)}
+                  target={verseOpenMode === "new-tab" ? "_blank" : undefined}
+                  rel={verseOpenMode === "new-tab" ? "noopener noreferrer" : undefined}
+                >
                   {item.book} {item.chapter}:{item.verse}
                 </a>
               </div>

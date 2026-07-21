@@ -11,6 +11,7 @@ export default defineConfig({
       "/auth": "http://localhost:8000",
       "/bible": "http://localhost:8000",
       "/admin": "http://localhost:8000",
+      "/user": "http://localhost:8000",
       "/health": "http://localhost:8000",
       "/docs": "http://localhost:8000"
     }

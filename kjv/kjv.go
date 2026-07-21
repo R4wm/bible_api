@@ -202,6 +202,7 @@ func (app *App) SetupRouter() {
 	// Setup admin routes for rate limit management
 	app.SetupAdminRoutes()
 	app.SetupAuthRoutes()
+	app.SetupUserRoutes()
 	app.SetupDocsRoutes()
 	app.SetupUIRoutes()
 }

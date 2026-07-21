@@ -44,3 +44,33 @@ func TestParseSuggestSearchResponseIncludesReference(t *testing.T) {
 		t.Fatalf("suggestion did not include expected reference metadata: %#v", got)
 	}
 }
+
+func TestBuildSearchBodyUsesCanonicalVerseOrder(t *testing.T) {
+	body := buildSearchBody("grace", 50, 0, map[string]string{})
+	sortFields, ok := body["sort"].([]interface{})
+	if !ok || len(sortFields) != 1 {
+		t.Fatalf("expected one sort field, got %#v", body["sort"])
+	}
+	field, ok := sortFields[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected sort field: %#v", sortFields[0])
+	}
+	if _, ok := field["ordinal_verse"]; !ok {
+		t.Fatalf("expected ordinal_verse sort, got %#v", field)
+	}
+}
+
+func TestBuildSuggestSearchBodyUsesCanonicalVerseOrder(t *testing.T) {
+	body := buildSuggestSearchBody("thy word", 20, 0)
+	sortFields, ok := body["sort"].([]interface{})
+	if !ok || len(sortFields) != 1 {
+		t.Fatalf("expected one sort field, got %#v", body["sort"])
+	}
+	field, ok := sortFields[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected sort field: %#v", sortFields[0])
+	}
+	if _, ok := field["ordinal_verse"]; !ok {
+		t.Fatalf("expected ordinal_verse sort, got %#v", field)
+	}
+}
