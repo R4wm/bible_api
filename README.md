@@ -1,5 +1,121 @@
 # Bible API
 
+## Deployed Web Routing: `prsmusa.com`
+
+The public web server and the Docker host are separate machines. The public
+Nginx host does **not** expose the Bible API directly; it reaches it through a
+loopback-only reverse SSH tunnel.
+
+```
+Browser
+  │ https://prsmusa.com/bible/...
+  ▼
+Public host: r4wm@172.236.115.113
+  Nginx + Let's Encrypt TLS
+  │ proxy_pass http://127.0.0.1:18000
+  ▼
+Reverse SSH tunnel (loopback only on the public host)
+  │ -R 127.0.0.1:18000:127.0.0.1:8000
+  ▼
+Docker host: baser4wm@10.0.0.68
+  docker compose / bible_api container on port 8000
+```
+
+### Public URLs and proxy mapping
+
+| Public route | Upstream route on `bible_api` |
+| --- | --- |
+| `https://prsmusa.com/bible/v2/` | `/v2/` (the React web UI) |
+| `https://prsmusa.com/bible/v2/search` | `/v2/search` |
+| `https://prsmusa.com/bible/v2/suggest` | `/v2/suggest` |
+| `https://prsmusa.com/bible/...` | `/bible/...` |
+| `https://prsmusa.com/auth/...` | `/auth/...` |
+| `https://prsmusa.com/user/...` | `/user/...` |
+
+Nginx also redirects the legacy accidental prefix
+`/bible/bible/v2/...` to `/bible/v2/...`. The `/bible/v2` HTML response is
+rewritten only for its `/v2/` asset/API references so that browser requests
+remain under the public `/bible/v2/` prefix. Do not replace every occurrence
+of `/v2/` globally: that created the doubled `/bible/bible/v2/` path.
+
+The active public Nginx site is
+`/etc/nginx/sites-available/prsmusa.com` on `172.236.115.113`. It includes
+these local snippets:
+
+- `/etc/nginx/snippets/prsmusa-bible-user-api.conf` for `/user/`
+- `/etc/nginx/snippets/prsmusa-bible-legacy-prefix.conf` for the legacy
+  doubled-prefix redirect
+- `/etc/nginx/snippets/prsmusa-favicon.conf` for the site favicon
+
+The public certificate is managed by Certbot for `prsmusa.com`; validate and
+reload after any Nginx edit with:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### Reverse-tunnel lifecycle
+
+On `10.0.0.68`, the tunnel is intentionally owned by the `baser4wm` user so
+it survives reboot without requiring a system-wide service:
+
+- Private key: `/home/baser4wm/.ssh/prsmusa_bible_tunnel`
+- Watchdog: `/home/baser4wm/bin/prsmusa-bible-tunnel`
+- Reboot entry: `@reboot` in `baser4wm`'s crontab, guarded with `flock`
+- Local log: `/home/baser4wm/.cache/prsmusa-bible-tunnel.log`
+
+The watchdog reconnects with SSH keepalives and `ExitOnForwardFailure`. Its
+essential command is:
+
+```bash
+ssh -N -T \
+  -i /home/baser4wm/.ssh/prsmusa_bible_tunnel \
+  -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -R 127.0.0.1:18000:127.0.0.1:8000 \
+  r4wm@172.236.115.113
+```
+
+The matching public-host SSH key is restricted to listening only on
+`127.0.0.1:18000`; do not broaden that listener to a public interface.
+
+### Operations and verification
+
+On the Docker host:
+
+```bash
+cd /home/baser4wm/github/bible_api
+docker compose ps
+docker compose logs --tail=100 bible_api
+```
+
+From the public host, test the tunnel without Nginx:
+
+```bash
+curl -fsS 'http://127.0.0.1:18000/v2/?book=GENESIS&chapter=1'
+```
+
+Then test public routing:
+
+```bash
+curl -fsS 'https://prsmusa.com/bible/v2/?book=GENESIS&chapter=1'
+curl -fsS 'https://prsmusa.com/bible/v2/suggest?q=beginning&n=5&from=0'
+curl -fsS 'https://prsmusa.com/bible/list_books?json=true'
+```
+
+If a chapter returns `"Verses": null` while SQLite and OpenSearch contain
+the verses, restart only the API container. The process can retain an
+incomplete in-memory preload if it started while the OpenSearch index was
+still being populated:
+
+```bash
+cd /home/baser4wm/github/bible_api
+docker compose restart bible_api
+```
+
 ## Quick URLs (Local)
 
 - API base: `http://localhost:8000`
