@@ -4,20 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 )
 
-const maxHistoryEntries = 100
+const (
+	maxHistoryEntries = 100
+	maxNoteLength     = 10000
+)
 
 // userSettings holds the per-user preferences that sync across devices.
 // Mirrors the client-side settings currently kept only in localStorage.
 type userSettings struct {
-	Theme         string `json:"theme,omitempty"`
-	Font          string `json:"font,omitempty"`
-	VerseOpenMode string `json:"verse_open_mode,omitempty"`
+	Theme               string `json:"theme,omitempty"`
+	Font                string `json:"font,omitempty"`
+	VerseOpenMode       string `json:"verse_open_mode,omitempty"`
+	ShowContinueReading *bool  `json:"show_continue_reading,omitempty"`
 }
 
 // readPage is one entry in a user's reading history.
@@ -33,6 +38,15 @@ type searchHistory struct {
 	TS    int64  `json:"ts"`
 }
 
+// verseNote is a private annotation attached to one verse for one user.
+type verseNote struct {
+	Book      string `json:"book"`
+	Chapter   int    `json:"chapter"`
+	Verse     int    `json:"verse"`
+	Text      string `json:"text"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
 func (app *App) SetupUserRoutes() {
 	// Authenticated via the session cookie (see getSession), same as /auth/me.
 	// No JWT scope is required: any logged-in user manages their own data.
@@ -41,6 +55,8 @@ func (app *App) SetupUserRoutes() {
 	app.Router.HandleFunc("/user/history", app.getUserHistory).Methods("GET")
 	app.Router.HandleFunc("/user/history", app.postUserHistory).Methods("POST")
 	app.Router.HandleFunc("/user/history/searches", app.postUserSearchHistory).Methods("POST")
+	app.Router.HandleFunc("/user/notes", app.getUserNotes).Methods("GET")
+	app.Router.HandleFunc("/user/notes", app.putUserNote).Methods("PUT")
 }
 
 // currentSub returns the authenticated user's Google subject, or false if the
@@ -56,6 +72,7 @@ func (app *App) currentSub(r *http.Request) (string, bool) {
 func settingsKey(sub string) string      { return "user:" + sub + ":settings" }
 func historyKey(sub string) string       { return "user:" + sub + ":history" }
 func searchHistoryKey(sub string) string { return "user:" + sub + ":search-history" }
+func notesKey(sub string) string         { return "user:" + sub + ":notes" }
 
 func (app *App) getUserSettings(w http.ResponseWriter, r *http.Request) {
 	sub, ok := app.currentSub(r)
@@ -213,6 +230,86 @@ func (app *App) postUserSearchHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"searches": updated})
 }
 
+// getUserNotes returns notes for a single chapter, keeping each reader load
+// small while still allowing the client to mark every noted verse in it.
+func (app *App) getUserNotes(w http.ResponseWriter, r *http.Request) {
+	sub, ok := app.currentSub(r)
+	if !ok {
+		jsonError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	book := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("book")))
+	chapter, err := strconv.Atoi(r.URL.Query().Get("chapter"))
+	if book == "" || err != nil || chapter <= 0 {
+		jsonError(w, http.StatusBadRequest, "book and chapter are required")
+		return
+	}
+	notes, err := app.loadNotes(sub)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to load notes")
+		return
+	}
+	chapterNotes := make([]verseNote, 0)
+	for _, note := range notes {
+		if note.Book == book && note.Chapter == chapter {
+			chapterNotes = append(chapterNotes, note)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"notes": chapterNotes})
+}
+
+// putUserNote creates or replaces the logged-in user's note for one verse.
+func (app *App) putUserNote(w http.ResponseWriter, r *http.Request) {
+	sub, ok := app.currentSub(r)
+	if !ok {
+		jsonError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req struct {
+		Book    string `json:"book"`
+		Chapter int    `json:"chapter"`
+		Verse   int    `json:"verse"`
+		Text    string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Book = strings.ToUpper(strings.TrimSpace(req.Book))
+	req.Text = strings.TrimSpace(req.Text)
+	if req.Book == "" || req.Chapter <= 0 || req.Verse <= 0 || req.Text == "" {
+		jsonError(w, http.StatusBadRequest, "book, chapter, verse, and text are required")
+		return
+	}
+	if len(req.Text) > maxNoteLength {
+		jsonError(w, http.StatusBadRequest, "note is too long")
+		return
+	}
+	notes, err := app.loadNotes(sub)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to load notes")
+		return
+	}
+	note := verseNote{Book: req.Book, Chapter: req.Chapter, Verse: req.Verse, Text: req.Text, UpdatedAt: time.Now().Unix()}
+	updated := false
+	for i := range notes {
+		if notes[i].Book == note.Book && notes[i].Chapter == note.Chapter && notes[i].Verse == note.Verse {
+			notes[i] = note
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		notes = append(notes, note)
+	}
+	payload, _ := json.Marshal(notes)
+	if err := app.Redis.Set(context.Background(), notesKey(sub), payload, 0).Err(); err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to save note")
+		return
+	}
+	writeJSON(w, http.StatusOK, note)
+}
+
 // loadHistory returns the user's reading history, most-recent-first, or an
 // empty slice if none is stored yet.
 func (app *App) loadHistory(sub string) ([]readPage, error) {
@@ -244,4 +341,19 @@ func (app *App) loadSearchHistory(sub string) ([]searchHistory, error) {
 		return []searchHistory{}, nil
 	}
 	return searches, nil
+}
+
+func (app *App) loadNotes(sub string) ([]verseNote, error) {
+	val, err := app.Redis.Get(context.Background(), notesKey(sub)).Result()
+	if err == redis.Nil {
+		return []verseNote{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var notes []verseNote
+	if err := json.Unmarshal([]byte(val), &notes); err != nil {
+		return []verseNote{}, nil
+	}
+	return notes, nil
 }
