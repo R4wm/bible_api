@@ -107,6 +107,7 @@ func main() {
 	app.StripeAPIBaseURL = getEnvOrDefault("STRIPE_API_BASE_URL", "https://api.stripe.com")
 	app.StripeHTTP = &http.Client{Timeout: 15 * time.Second}
 	app.PublicBaseURL = strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/")
+	app.NotesMaxMemoryBytes = getEnvInt64("NOTES_REDIS_MAX_MEMORY_BYTES", 128*1024*1024)
 	app.NormalizeAuthConfig()
 
 	// Wait for OpenSearch to be ready before starting
@@ -152,6 +153,15 @@ func getEnvOrDefault(key, def string) string {
 func getEnvInt(key string, def int) int {
 	if val := os.Getenv(key); val != "" {
 		if parsed, err := strconv.Atoi(val); err == nil {
+			return parsed
+		}
+	}
+	return def
+}
+
+func getEnvInt64(key string, def int64) int64 {
+	if val := os.Getenv(key); val != "" {
+		if parsed, err := strconv.ParseInt(val, 10, 64); err == nil && parsed >= 0 {
 			return parsed
 		}
 	}

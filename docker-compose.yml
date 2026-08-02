@@ -60,6 +60,9 @@ services:
     environment:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=
+      # Set to 0 to disable the notes safety gate. Existing notes remain
+      # readable when Redis reaches this limit; only editing is paused.
+      - NOTES_REDIS_MAX_MEMORY_BYTES=134217728
       - OPENSEARCH_URL=http://opensearch:9200
       - OPENSEARCH_INDEX=kjv_v2
       - OPENSEARCH_SYNONYMS_SET=kjv_synonyms

@@ -236,6 +236,7 @@ export default function App() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState("");
   const [notesMode, setNotesMode] = useState(false);
+  const [notesEditingEnabled, setNotesEditingEnabled] = useState(true);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("preferences");
   // True once we've pulled server-side settings for the logged-in user, so we
   // don't push local defaults back up before knowing what the server has.
@@ -290,6 +291,7 @@ export default function App() {
       setNotes([]);
       setNoteVerse(null);
       setNotesMode(false);
+      setNotesEditingEnabled(true);
       setSettingsTab("preferences");
       return;
     }
@@ -323,7 +325,12 @@ export default function App() {
     fetch(`/user/notes?book=${encodeURIComponent(selectedBook)}&chapter=${selectedChapter}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled) setNotes(Array.isArray(data?.notes) ? data.notes : []);
+        if (!cancelled) {
+          setNotes(Array.isArray(data?.notes) ? data.notes : []);
+          const editingEnabled = data?.editing_enabled !== false;
+          setNotesEditingEnabled(editingEnabled);
+          if (!editingEnabled) setNotesMode(false);
+        }
       })
       .catch(() => { if (!cancelled) setNotes([]); });
     return () => { cancelled = true; };
@@ -814,7 +821,15 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ book: selectedBook, chapter: selectedChapter, verse: noteVerse, text }),
       });
-      if (!response.ok) throw new Error("Unable to save note");
+      if (!response.ok) {
+        if (response.status === 503) {
+          setNotesEditingEnabled(false);
+          setNotesMode(false);
+          setNoteError("Note editing is temporarily unavailable while storage is near capacity.");
+          return;
+        }
+        throw new Error("Unable to save note");
+      }
       const saved: VerseNote = await response.json();
       setNotes((current) => [...current.filter((note) => note.verse !== saved.verse), saved]);
       setNoteText(saved.text);
@@ -1168,6 +1183,7 @@ export default function App() {
                 <button
                   className={`notes-mode-toggle${notesMode ? " active" : ""}`}
                   aria-pressed={notesMode}
+                  disabled={!notesEditingEnabled}
                   onClick={() => {
                     setNotesMode((enabled) => {
                       if (enabled) setNoteVerse(null);
@@ -1179,6 +1195,7 @@ export default function App() {
                 </button>
               )}
             </div>
+            {hasToken && !notesEditingEnabled && <p className="notes-unavailable">Note editing is temporarily unavailable while storage is near capacity.</p>}
             {hasToken && notesMode && <p className="notes-hint">Notes mode is on — select a verse to add or edit a private note.</p>}
             {reading.map((v) => (
               <div
@@ -1229,7 +1246,10 @@ export default function App() {
                     </button>
                   </>
                 ) : (
-                  <p className="note-display">{noteText}</p>
+                  <>
+                    <p className="note-display">{noteText}</p>
+                    {noteError && <p className="note-error">{noteError}</p>}
+                  </>
                 )}
               </aside>
             </div>

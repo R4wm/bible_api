@@ -488,6 +488,12 @@ h1, h2 {
   margin: -4px 0 12px;
 }
 
+.notes-unavailable {
+  color: #9b5d00;
+  font-size: 13px;
+  margin: -4px 0 12px;
+}
+
 .verse-text.note-selectable {
   cursor: pointer;
 }
@@ -649,6 +655,7 @@ body.theme-dark .verse-text.selected-verse {
 }
 body.theme-dark .notes-sidebar { background: #111; border-color: #333; }
 body.theme-dark .notes-hint { color: #aaa; }
+body.theme-dark .notes-unavailable { color: #ffc857; }
 body.theme-dark .note-character-count { color: #aaa; }
 body.theme-dark .verse-text.note-selectable:hover { background: rgba(244, 196, 0, 0.16); }
 

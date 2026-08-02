@@ -3,6 +3,7 @@ package kjv
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -255,7 +256,11 @@ func (app *App) getUserNotes(w http.ResponseWriter, r *http.Request) {
 			chapterNotes = append(chapterNotes, note)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"notes": chapterNotes})
+	editingEnabled, _ := app.notesEditingEnabled(r.Context())
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"notes":           chapterNotes,
+		"editing_enabled": editingEnabled,
+	})
 }
 
 // putUserNote creates or replaces the logged-in user's note for one verse.
@@ -263,6 +268,15 @@ func (app *App) putUserNote(w http.ResponseWriter, r *http.Request) {
 	sub, ok := app.currentSub(r)
 	if !ok {
 		jsonError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	editingEnabled, err := app.notesEditingEnabled(r.Context())
+	if err != nil {
+		jsonError(w, http.StatusServiceUnavailable, "note editing is temporarily unavailable")
+		return
+	}
+	if !editingEnabled {
+		jsonError(w, http.StatusServiceUnavailable, "note editing is temporarily unavailable while storage is near capacity")
 		return
 	}
 	var req struct {
@@ -308,6 +322,30 @@ func (app *App) putUserNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, note)
+}
+
+// notesEditingEnabled prevents note writes from contributing to a Redis memory
+// incident. A limit of zero explicitly disables this guard.
+func (app *App) notesEditingEnabled(ctx context.Context) (bool, error) {
+	if app.NotesMaxMemoryBytes <= 0 {
+		return true, nil
+	}
+	info, err := app.Redis.Info(ctx, "memory").Result()
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(info, "\n") {
+		value := strings.TrimSpace(line)
+		if !strings.HasPrefix(value, "used_memory:") {
+			continue
+		}
+		used, err := strconv.ParseInt(strings.TrimPrefix(value, "used_memory:"), 10, 64)
+		if err != nil {
+			return false, err
+		}
+		return used < app.NotesMaxMemoryBytes, nil
+	}
+	return false, fmt.Errorf("Redis memory usage was not reported")
 }
 
 // loadHistory returns the user's reading history, most-recent-first, or an
