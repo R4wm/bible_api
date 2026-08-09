@@ -229,6 +229,9 @@ export default function App() {
   const chartInstance = useRef<any>(null);
   const suggestionsSentinelRef = useRef<HTMLDivElement>(null);
   const suggestionRequestRef = useRef(0);
+  const searchResultsRef = useRef<HTMLElement>(null);
+  const chaptersRef = useRef<HTMLElement>(null);
+  const readingRef = useRef<HTMLElement>(null);
 
   const fontClasses = ["font-blackletter", "font-renaissance", "font-serif"];
   const selectedVerseSet = useMemo(() => new Set(selectedVerses), [selectedVerses]);
@@ -400,6 +403,29 @@ export default function App() {
       chartInstance.current = null;
     };
   }, [searchPerformed, bookCounts, theme]);
+
+  const scrollToSection = (section: React.RefObject<HTMLElement | null>) => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    section.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+  };
+
+  useEffect(() => {
+    if (view !== "search" || loading || !searchPerformed) return;
+    const frame = window.requestAnimationFrame(() => scrollToSection(searchResultsRef));
+    return () => window.cancelAnimationFrame(frame);
+  }, [view, loading, searchPerformed, results]);
+
+  useEffect(() => {
+    if (view !== "chapters" || !selectedBook || chapters.length === 0) return;
+    const frame = window.requestAnimationFrame(() => scrollToSection(chaptersRef));
+    return () => window.cancelAnimationFrame(frame);
+  }, [view, selectedBook, chapters]);
+
+  useEffect(() => {
+    if (view !== "reading" || !selectedBook || selectedChapter === 0 || reading.length === 0) return;
+    const frame = window.requestAnimationFrame(() => scrollToSection(readingRef));
+    return () => window.cancelAnimationFrame(frame);
+  }, [view, selectedBook, selectedChapter, reading]);
 
   useEffect(() => {
     fetch("/auth/config")
@@ -941,6 +967,37 @@ export default function App() {
       )}
       {error && <div className="error">{error}</div>}
 
+      {/* Keep search feedback next to the controls that produced it. */}
+      {searchPerformed && (
+        <section className="search-results" ref={searchResultsRef} aria-live="polite">
+          <h2>Search Results</h2>
+          <div className="chart-container">
+            <canvas ref={chartRef} />
+          </div>
+          {results.length === 0 && !loading && <div className="empty">No results.</div>}
+          {results.map((item) => (
+            <div key={`${item.book}-${item.chapter}-${item.verse}`} className="result">
+              <div className="meta">
+                <a
+                  href={v2ReaderURL(item.book, item.chapter, item.verse)}
+                  target={verseOpenMode === "new-tab" ? "_blank" : undefined}
+                  rel={verseOpenMode === "new-tab" ? "noopener noreferrer" : undefined}
+                  onClick={(event) => {
+                    if (verseOpenMode === "same-tab") {
+                      event.preventDefault();
+                      openPage(item.book, item.chapter, { verses: [item.verse], label: String(item.verse) });
+                    }
+                  }}
+                >
+                  {item.book} {item.chapter}:{item.verse}
+                </a>
+              </div>
+              <div className="text" dangerouslySetInnerHTML={{ __html: safeHighlight(item) }} />
+            </div>
+          ))}
+        </section>
+      )}
+
       {/* Navigation */}
       {selectedBook && (
         <div className="nav-bar">
@@ -987,7 +1044,7 @@ export default function App() {
 
       {/* Chapters list */}
       {selectedBook && (
-        <>
+        <section ref={chaptersRef} className="reader-section">
           <h2>{selectedBook}</h2>
           <div className="chapters-grid">
             {chapters.map((ch) => (
@@ -996,12 +1053,12 @@ export default function App() {
               </button>
             ))}
           </div>
-        </>
+        </section>
       )}
 
       {/* Reading */}
       {selectedChapter > 0 && (
-        <>
+        <section ref={readingRef} className="reader-section">
           <h2>{selectedBook} {selectedChapter}{selectedVerseLabel ? `:${selectedVerseLabel}` : ""}</h2>
           {reading.map((v) => (
             <p
@@ -1012,38 +1069,7 @@ export default function App() {
               <span className="verse-num">{v.number}</span> {v.text}
             </p>
           ))}
-        </>
-      )}
-
-      {/* Search results */}
-      {searchPerformed && (
-        <>
-          <h2>Search Results</h2>
-          <div className="chart-container">
-            <canvas ref={chartRef} />
-          </div>
-          {results.length === 0 && !loading && <div className="empty">No results.</div>}
-          {results.map((item) => (
-            <div key={`${item.book}-${item.chapter}-${item.verse}`} className="result">
-              <div className="meta">
-                <a
-                  href={v2ReaderURL(item.book, item.chapter, item.verse)}
-                  target={verseOpenMode === "new-tab" ? "_blank" : undefined}
-                  rel={verseOpenMode === "new-tab" ? "noopener noreferrer" : undefined}
-                  onClick={(event) => {
-                    if (verseOpenMode === "current-tab") {
-                      event.preventDefault();
-                      openPage(item.book, item.chapter, { verses: [item.verse], label: String(item.verse) });
-                    }
-                  }}
-                >
-                  {item.book} {item.chapter}:{item.verse}
-                </a>
-              </div>
-              <div className="text" dangerouslySetInnerHTML={{ __html: safeHighlight(item) }} />
-            </div>
-          ))}
-        </>
+        </section>
       )}
 
       <div className="footer">

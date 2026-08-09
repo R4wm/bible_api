@@ -366,6 +366,11 @@ h1, h2 {
   padding: 8px;
 }
 
+.search-results,
+.reader-section {
+  scroll-margin-top: 12px;
+}
+
 /* Results */
 .result {
   border-bottom: 1px solid #ccc;
