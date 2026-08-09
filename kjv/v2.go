@@ -97,11 +97,6 @@ func (app *App) InitOpenSearch() {
 }
 
 func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
-	if err := app.ensureOpenSearchReady(); err != nil {
-		jsonError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
 		jsonError(w, http.StatusBadRequest, "q is required")
@@ -110,6 +105,13 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 	options, err := parseSearchOptions(r)
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Validate the request before checking a downstream dependency. Clients
+	// should receive a stable 400 for invalid options even while OpenSearch is
+	// unavailable.
+	if err := app.ensureOpenSearchReady(); err != nil {
+		jsonError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 

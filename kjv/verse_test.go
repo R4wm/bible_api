@@ -2,6 +2,7 @@ package kjv
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -105,6 +106,38 @@ func TestParseSearchOptions(t *testing.T) {
 	}
 	if got.Match != searchMatchPhrase || !got.CaseSensitive {
 		t.Fatalf("unexpected options: %#v", got)
+	}
+}
+
+func TestParseSearchOptionsRejectsInvalidValues(t *testing.T) {
+	tests := []string{
+		"/bible/v2/search?q=love&match=near",
+		"/bible/v2/search?q=love&case_sensitive=perhaps",
+	}
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			if _, err := parseSearchOptions(req); err == nil {
+				t.Fatalf("parseSearchOptions(%q) returned nil error", path)
+			}
+		})
+	}
+}
+
+func TestSearchV2RejectsInvalidOptionsBeforeOpenSearchCheck(t *testing.T) {
+	app := &App{}
+	for _, path := range []string{
+		"/bible/v2/search?q=love&match=near",
+		"/bible/v2/search?q=love&case_sensitive=perhaps",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			rec := httptest.NewRecorder()
+			app.searchV2(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+			}
+		})
 	}
 }
 
