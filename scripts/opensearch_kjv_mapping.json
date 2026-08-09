@@ -14,7 +14,14 @@
       "text": {
         "type": "text",
         "analyzer": "english",
-        "search_analyzer": "english"
+        "search_analyzer": "english",
+        "fields": {
+          "case_sensitive": {
+            "type": "text",
+            "analyzer": "case_sensitive",
+            "search_analyzer": "case_sensitive"
+          }
+        }
       },
       "text_suggest": {
         "type": "completion"
@@ -27,6 +34,17 @@
       },
       "testament": {
         "type": "keyword"
+      }
+    }
+  },
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "case_sensitive": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": []
+        }
       }
     }
   }

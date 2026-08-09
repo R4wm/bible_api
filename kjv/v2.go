@@ -22,6 +22,21 @@ const (
 	defaultSynonymsSet     = "kjv_synonyms"
 )
 
+// searchMatchMode defines how multiple terms in q are combined.
+// The zero/default value deliberately preserves the existing broad search.
+type searchMatchMode string
+
+const (
+	searchMatchAny    searchMatchMode = "any"
+	searchMatchAll    searchMatchMode = "all"
+	searchMatchPhrase searchMatchMode = "phrase"
+)
+
+type searchOptions struct {
+	Match         searchMatchMode
+	CaseSensitive bool
+}
+
 type v2SearchResult struct {
 	Book      string   `json:"book"`
 	Chapter   int      `json:"chapter"`
@@ -92,6 +107,11 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, "q is required")
 		return
 	}
+	options, err := parseSearchOptions(r)
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	size := parseIntDefault(r.URL.Query().Get("n"), 50)
 	if size > 1000 {
@@ -109,7 +129,7 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 		"verse":     strings.TrimSpace(r.URL.Query().Get("verse")),
 	}
 
-	searchBody := buildSearchBody(query, size, from, filters)
+	searchBody := buildSearchBody(query, size, from, filters, options)
 	bodyBytes, _ := json.Marshal(searchBody)
 
 	respBody, status, err := app.doOpenSearchRequest("POST", fmt.Sprintf("/%s/_search", app.OpenSearchIndex), bodyBytes)
@@ -131,11 +151,13 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 	out := v2SearchResponse{
 		Status: "ok",
 		Meta: map[string]interface{}{
-			"query":   query,
-			"count":   total,
-			"from":    from,
-			"size":    size,
-			"took_ms": took,
+			"query":          query,
+			"count":          total,
+			"from":           from,
+			"size":           size,
+			"took_ms":        took,
+			"match":          options.Match,
+			"case_sensitive": options.CaseSensitive,
 		},
 		Data: map[string]interface{}{
 			"results":     results,
@@ -358,16 +380,48 @@ func (app *App) ensureOpenSearchReady() error {
 	return nil
 }
 
-func buildSearchBody(query string, size, from int, filters map[string]string) map[string]interface{} {
-	must := []interface{}{
-		map[string]interface{}{
-			"match": map[string]interface{}{
-				"text": map[string]interface{}{
-					"query": query,
-				},
-			},
-		},
+func parseSearchOptions(r *http.Request) (searchOptions, error) {
+	options := searchOptions{Match: searchMatchAny}
+	if match := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("match"))); match != "" {
+		switch searchMatchMode(match) {
+		case searchMatchAny, searchMatchAll, searchMatchPhrase:
+			options.Match = searchMatchMode(match)
+		default:
+			return searchOptions{}, fmt.Errorf("match must be one of: any, all, phrase")
+		}
 	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("case_sensitive")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return searchOptions{}, fmt.Errorf("case_sensitive must be true or false")
+		}
+		options.CaseSensitive = parsed
+	}
+	return options, nil
+}
+
+func buildSearchBody(query string, size, from int, filters map[string]string, options searchOptions) map[string]interface{} {
+	field := "text"
+	if options.CaseSensitive {
+		field = "text.case_sensitive"
+	}
+
+	var textQuery map[string]interface{}
+	if options.Match == searchMatchPhrase {
+		textQuery = map[string]interface{}{
+			"match_phrase": map[string]interface{}{field: map[string]interface{}{"query": query}},
+		}
+	} else {
+		match := map[string]interface{}{"query": query}
+		if options.Match == searchMatchAll {
+			match["operator"] = "and"
+		}
+		textQuery = map[string]interface{}{
+			"match": map[string]interface{}{field: match},
+		}
+	}
+
+	must := []interface{}{textQuery}
 
 	filterClauses := []interface{}{}
 	if book := filters["book"]; book != "" {
