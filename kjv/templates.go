@@ -110,6 +110,7 @@ const (
       <a href="/bible/list_books">Books</a>
       <button id="menu-search">Search</button>
       <a href="/docs">Docs</a>
+      <a href="/donate">Donations</a>
       <button id="menu-settings">Settings</button>
       <a href="/v2">Open v2</a>
     </div>

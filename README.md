@@ -19,7 +19,7 @@
 - A raw high performance RESTful API written in Go
 - King James Version Pure Cambridge Text
 - No ads, No distractions, not ever.
-- Hamburger navigation menu on every page (Books, Search, Docs, Settings, cross-link to v2/classic)
+- Hamburger navigation menu on every page (Books, Search, Docs, Donations, Settings, cross-link to v2/classic)
 - Font settings: choose from Default, Blackletter (Gothic), Renaissance, or Classic Serif — persists via localStorage
 - All Bible text preloaded into memory at startup for instant reads (zero OpenSearch latency for chapter/verse/random)
 - Easy navigation
@@ -53,6 +53,22 @@
 - **OpenSearch** — all Bible content reads, full-text search, autocomplete suggestions
 - **Redis** — rate limiting, session storage
 - No SQLite dependency. OpenSearch is the sole data source for Bible content.
+
+### Donations (Stripe Checkout)
+
+The Donations menu item opens `/donate`, where supporters can choose a one-time or
+monthly USD donation and are redirected to Stripe Checkout. Configure these values
+outside source control before enabling payments:
+
+```bash
+STRIPE_SECRET_KEY=replace_with_rotated_secret
+PUBLIC_BASE_URL=https://prsmusa.com
+```
+
+`STRIPE_SECRET_KEY` is server-only. Do not expose it in browser code, commit it to
+the repository, or put it in a Vite environment variable. Monthly donations use
+Stripe Billing; one-time donations request Stripe invoice creation. Configure Stripe
+Tax and your account's donation receipt/tax settings in the Stripe Dashboard.
 
 ### Rate Limiting
 

@@ -803,6 +803,7 @@ export default function App() {
           <button onClick={() => { window.scrollTo({ top: 0, behavior: "smooth" }); setMenuOpen(false); }}>Books</button>
           <button onClick={() => { setView("search"); searchInputRef.current?.focus(); setMenuOpen(false); }}>Search</button>
           <a href="/docs">Docs</a>
+          <a href="/donate">Donations</a>
           <button onClick={() => setSettingsOpen(!settingsOpen)}>Settings</button>
           <a href="/bible/list_books">Open Classic</a>
         </div>
