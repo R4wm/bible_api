@@ -99,6 +99,7 @@ type VerseSelection = {
 
 type View = "books" | "chapters" | "reading" | "search";
 type SettingsTab = "preferences" | "history";
+type SearchMatchMode = "any" | "all" | "phrase";
 
 type GoogleProfile = { picture?: string; name?: string; email?: string };
 
@@ -186,6 +187,8 @@ export default function App() {
   const [reading, setReading] = useState<ReadVerse[]>([]);
 
   const [query, setQuery] = useState("");
+  const [searchMatch, setSearchMatch] = useState<SearchMatchMode>("any");
+  const [caseSensitive, setCaseSensitive] = useState(false);
   const [suggestQuery, setSuggestQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestionOffset, setSuggestionOffset] = useState(0);
@@ -193,6 +196,7 @@ export default function App() {
   const [hasMoreSuggestions, setHasMoreSuggestions] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [bookCounts, setBookCounts] = useState<Record<string, number>>({});
+  const [searchPerformed, setSearchPerformed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -225,6 +229,9 @@ export default function App() {
   const chartInstance = useRef<any>(null);
   const suggestionsSentinelRef = useRef<HTMLDivElement>(null);
   const suggestionRequestRef = useRef(0);
+  const searchResultsRef = useRef<HTMLElement>(null);
+  const chaptersRef = useRef<HTMLElement>(null);
+  const readingRef = useRef<HTMLElement>(null);
 
   const fontClasses = ["font-blackletter", "font-renaissance", "font-serif"];
   const selectedVerseSet = useMemo(() => new Set(selectedVerses), [selectedVerses]);
@@ -333,7 +340,7 @@ export default function App() {
 
   // Render chart when search results change
   useEffect(() => {
-    if (view !== "search" || !chartRef.current || typeof Chart === "undefined") return;
+    if (!searchPerformed || !chartRef.current || typeof Chart === "undefined") return;
 
     const axisColor = theme === "dark" ? "#ddd" : "#666";
     const gridColor = theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)";
@@ -395,7 +402,30 @@ export default function App() {
       chartInstance.current?.destroy();
       chartInstance.current = null;
     };
-  }, [view, bookCounts, theme]);
+  }, [searchPerformed, bookCounts, theme]);
+
+  const scrollToSection = (section: React.RefObject<HTMLElement | null>) => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    section.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+  };
+
+  useEffect(() => {
+    if (view !== "search" || loading || !searchPerformed) return;
+    const frame = window.requestAnimationFrame(() => scrollToSection(searchResultsRef));
+    return () => window.cancelAnimationFrame(frame);
+  }, [view, loading, searchPerformed, results]);
+
+  useEffect(() => {
+    if (view !== "chapters" || !selectedBook || chapters.length === 0) return;
+    const frame = window.requestAnimationFrame(() => scrollToSection(chaptersRef));
+    return () => window.cancelAnimationFrame(frame);
+  }, [view, selectedBook, chapters]);
+
+  useEffect(() => {
+    if (view !== "reading" || !selectedBook || selectedChapter === 0 || reading.length === 0) return;
+    const frame = window.requestAnimationFrame(() => scrollToSection(readingRef));
+    return () => window.cancelAnimationFrame(frame);
+  }, [view, selectedBook, selectedChapter, reading]);
 
   useEffect(() => {
     fetch("/auth/config")
@@ -591,13 +621,16 @@ export default function App() {
     return () => window.removeEventListener("popstate", restoreLocation);
   }, []);
 
-  const runSearch = async (searchTerm = query) => {
-    const normalizedQuery = searchTerm.trim();
+  const runSearch = async (searchTerm?: string) => {
+    const normalizedQuery = (searchTerm ?? query).trim();
     if (!normalizedQuery) return;
     setLoading(true);
     setError("");
+    setSearchPerformed(true);
     try {
-      const resp = await fetch(`/bible/v2/search?q=${encodeURIComponent(normalizedQuery)}`);
+      const params = new URLSearchParams({ q: normalizedQuery, match: searchMatch });
+      if (caseSensitive) params.set("case_sensitive", "true");
+      const resp = await fetch(`/bible/v2/search?${params.toString()}`);
       if (!resp.ok) throw new Error("Search failed");
       const data = await resp.json();
       setResults(data?.data?.results || []);
@@ -692,7 +725,10 @@ export default function App() {
       window.open(url, "_blank", "noopener,noreferrer");
       return;
     }
-    window.location.href = url;
+    openPage(suggestion.book, suggestion.chapter, {
+      verses: [suggestion.verse],
+      label: String(suggestion.verse),
+    });
   };
 
   const logout = async () => {
@@ -723,7 +759,8 @@ export default function App() {
         >
           &#9776;
         </button>
-        <div className="search-bar">
+        <div className="search-controls">
+          <div className="search-bar">
           <input
             ref={searchInputRef}
             value={query}
@@ -731,9 +768,29 @@ export default function App() {
             onKeyDown={(e) => { if (e.key === "Enter") runSearch(); }}
             placeholder="Search the text"
           />
-          <button onClick={runSearch} disabled={loading}>
+          <button onClick={() => runSearch()} disabled={loading}>
             {loading ? "..." : "search"}
           </button>
+          </div>
+          <fieldset className="search-options">
+            <legend>Match</legend>
+            <label>
+              <input type="radio" name="search-match" value="any" checked={searchMatch === "any"} onChange={() => setSearchMatch("any")} />
+              Any words
+            </label>
+            <label>
+              <input type="radio" name="search-match" value="all" checked={searchMatch === "all"} onChange={() => setSearchMatch("all")} />
+              All words
+            </label>
+            <label>
+              <input type="radio" name="search-match" value="phrase" checked={searchMatch === "phrase"} onChange={() => setSearchMatch("phrase")} />
+              Exact phrase
+            </label>
+            <label>
+              <input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />
+              Case sensitive
+            </label>
+          </fieldset>
         </div>
         <button
           className="profile-btn"
@@ -769,9 +826,10 @@ export default function App() {
       {/* Menu panel */}
       {menuOpen && (
         <div className="menu-panel" ref={menuRef}>
-          <button onClick={() => { showBooks(); setMenuOpen(false); }}>Books</button>
+          <button onClick={() => { window.scrollTo({ top: 0, behavior: "smooth" }); setMenuOpen(false); }}>Books</button>
           <button onClick={() => { setView("search"); searchInputRef.current?.focus(); setMenuOpen(false); }}>Search</button>
           <a href="/docs">Docs</a>
+          <a href="/donate">Donations</a>
           <button onClick={() => setSettingsOpen(!settingsOpen)}>Settings</button>
           <a href="/bible/list_books">Open Classic</a>
         </div>
@@ -909,24 +967,55 @@ export default function App() {
       )}
       {error && <div className="error">{error}</div>}
 
+      {/* Keep search feedback next to the controls that produced it. */}
+      {searchPerformed && (
+        <section className="search-results" ref={searchResultsRef} aria-live="polite">
+          <h2>Search Results</h2>
+          <div className="chart-container">
+            <canvas ref={chartRef} />
+          </div>
+          {results.length === 0 && !loading && <div className="empty">No results.</div>}
+          {results.map((item) => (
+            <div key={`${item.book}-${item.chapter}-${item.verse}`} className="result">
+              <div className="meta">
+                <a
+                  href={v2ReaderURL(item.book, item.chapter, item.verse)}
+                  target={verseOpenMode === "new-tab" ? "_blank" : undefined}
+                  rel={verseOpenMode === "new-tab" ? "noopener noreferrer" : undefined}
+                  onClick={(event) => {
+                    if (verseOpenMode === "same-tab") {
+                      event.preventDefault();
+                      openPage(item.book, item.chapter, { verses: [item.verse], label: String(item.verse) });
+                    }
+                  }}
+                >
+                  {item.book} {item.chapter}:{item.verse}
+                </a>
+              </div>
+              <div className="text" dangerouslySetInnerHTML={{ __html: safeHighlight(item) }} />
+            </div>
+          ))}
+        </section>
+      )}
+
       {/* Navigation */}
-      {view !== "books" && (
+      {selectedBook && (
         <div className="nav-bar">
-          <button className="nav-btn" onClick={() => showBooks()}>Books Menu</button>
-          {view === "reading" && (
+          <button className="nav-btn" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>Books Menu</button>
+          {selectedChapter > 0 && (
             <button className="nav-btn" onClick={() => loadChapters(selectedBook)}>{selectedBook}</button>
           )}
-          {view === "reading" && selectedChapter > 1 && (
+          {selectedChapter > 1 && (
             <button className="nav-btn" onClick={() => loadChapter(selectedChapter - 1)}>&lt;</button>
           )}
-          {view === "reading" && selectedChapter < chapters.length && (
+          {selectedChapter < chapters.length && (
             <button className="nav-btn" onClick={() => loadChapter(selectedChapter + 1)}>&gt;</button>
           )}
         </div>
       )}
 
       {/* Continue reading: last pages read (signed-in users) */}
-      {view === "books" && recent.length > 0 && (
+      {recent.length > 0 && (
         <div className="recent-row">
           <span className="recent-label">Continue reading</span>
           {recent.slice(0, 5).map((p) => (
@@ -942,19 +1031,20 @@ export default function App() {
       )}
 
       {/* Books list */}
-      {view === "books" && (
-        <div className="books-grid">
+      <>
+        <h2>Books</h2>
+          <div className="books-grid">
           {books.map((book) => (
             <button key={book} className="block" onClick={() => loadChapters(book)}>
               {book}
             </button>
           ))}
         </div>
-      )}
+      </>
 
       {/* Chapters list */}
-      {view === "chapters" && (
-        <>
+      {selectedBook && (
+        <section ref={chaptersRef} className="reader-section">
           <h2>{selectedBook}</h2>
           <div className="chapters-grid">
             {chapters.map((ch) => (
@@ -963,12 +1053,12 @@ export default function App() {
               </button>
             ))}
           </div>
-        </>
+        </section>
       )}
 
       {/* Reading */}
-      {view === "reading" && (
-        <>
+      {selectedChapter > 0 && (
+        <section ref={readingRef} className="reader-section">
           <h2>{selectedBook} {selectedChapter}{selectedVerseLabel ? `:${selectedVerseLabel}` : ""}</h2>
           {reading.map((v) => (
             <p
@@ -979,32 +1069,7 @@ export default function App() {
               <span className="verse-num">{v.number}</span> {v.text}
             </p>
           ))}
-        </>
-      )}
-
-      {/* Search results */}
-      {view === "search" && (
-        <>
-          <h2>Search Results</h2>
-          <div className="chart-container">
-            <canvas ref={chartRef} />
-          </div>
-          {results.length === 0 && !loading && <div className="empty">No results.</div>}
-          {results.map((item) => (
-            <div key={`${item.book}-${item.chapter}-${item.verse}`} className="result">
-              <div className="meta">
-                <a
-                  href={v2ReaderURL(item.book, item.chapter, item.verse)}
-                  target={verseOpenMode === "new-tab" ? "_blank" : undefined}
-                  rel={verseOpenMode === "new-tab" ? "noopener noreferrer" : undefined}
-                >
-                  {item.book} {item.chapter}:{item.verse}
-                </a>
-              </div>
-              <div className="text" dangerouslySetInnerHTML={{ __html: safeHighlight(item) }} />
-            </div>
-          ))}
-        </>
+        </section>
       )}
 
       <div className="footer">

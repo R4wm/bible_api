@@ -68,6 +68,8 @@ services:
       - GOOGLE_CLIENT_ID=1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com
       - JWT_SECRET=change_me
       - INTERNAL_TOKEN_SECRET=change_me
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8000}
     depends_on:
       redis:
         condition: service_healthy

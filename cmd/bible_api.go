@@ -103,6 +103,10 @@ func main() {
 	app.SessionCookieSecure = parseBoolEnv(os.Getenv("SESSION_COOKIE_SECURE"), false)
 	app.GoogleClientID = getEnvOrDefault("GOOGLE_CLIENT_ID", "1087565480706-8ntgu6rrcbpfmtnlqd2pair903q664v5.apps.googleusercontent.com")
 	app.InternalTokenSecret = os.Getenv("INTERNAL_TOKEN_SECRET")
+	app.StripeSecretKey = os.Getenv("STRIPE_SECRET_KEY")
+	app.StripeAPIBaseURL = getEnvOrDefault("STRIPE_API_BASE_URL", "https://api.stripe.com")
+	app.StripeHTTP = &http.Client{Timeout: 15 * time.Second}
+	app.PublicBaseURL = strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/")
 	app.NormalizeAuthConfig()
 
 	// Wait for OpenSearch to be ready before starting

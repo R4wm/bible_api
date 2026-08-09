@@ -19,7 +19,7 @@
 - A raw high performance RESTful API written in Go
 - King James Version Pure Cambridge Text
 - No ads, No distractions, not ever.
-- Hamburger navigation menu on every page (Books, Search, Docs, Settings, cross-link to v2/classic)
+- Hamburger navigation menu on every page (Books, Search, Docs, Donations, Settings, cross-link to v2/classic)
 - Font settings: choose from Default, Blackletter (Gothic), Renaissance, or Classic Serif — persists via localStorage
 - All Bible text preloaded into memory at startup for instant reads (zero OpenSearch latency for chapter/verse/random)
 - Easy navigation
@@ -53,6 +53,22 @@
 - **OpenSearch** — all Bible content reads, full-text search, autocomplete suggestions
 - **Redis** — rate limiting, session storage
 - No SQLite dependency. OpenSearch is the sole data source for Bible content.
+
+### Donations (Stripe Checkout)
+
+The Donations menu item opens `/donate`, where supporters can choose a one-time or
+monthly USD donation and are redirected to Stripe Checkout. Configure these values
+outside source control before enabling payments:
+
+```bash
+STRIPE_SECRET_KEY=replace_with_rotated_secret
+PUBLIC_BASE_URL=https://prsmusa.com
+```
+
+`STRIPE_SECRET_KEY` is server-only. Do not expose it in browser code, commit it to
+the repository, or put it in a Vite environment variable. Monthly donations use
+Stripe Billing; one-time donations request Stripe invoice creation. Configure Stripe
+Tax and your account's donation receipt/tax settings in the Stripe Dashboard.
 
 ### Rate Limiting
 
@@ -101,6 +117,31 @@ python3 scripts/index_kjv_to_opensearch.py --url http://localhost:9200
 ```
 
 This is required whenever `text_suggest` indexing logic changes in `scripts/index_kjv_to_opensearch.py`.
+
+### Case-sensitive v2 search rollout
+
+`GET /bible/v2/search` accepts two optional controls:
+
+- `match=any` (default), `match=all`, or `match=phrase`
+- `case_sensitive=true|false` (default `false`)
+
+`case_sensitive=true` queries the `text.case_sensitive` field. That field is populated only when a verse is indexed with the current mapping, so **do not enable or rely on case-sensitive search against an existing index until it has been rebuilt.**
+
+Use a new versioned index rather than deleting the live index in place. The helper below refuses to overwrite an existing index:
+
+```bash
+# Create and populate a new index using the current mapping.
+scripts/create_case_sensitive_index.sh \
+  --url http://localhost:9200 \
+  --index kjv_v2_case_sensitive_20260809
+
+# Point the API at the new index, restart it, then verify the behavior.
+export OPENSEARCH_INDEX=kjv_v2_case_sensitive_20260809
+curl 'http://localhost:8000/bible/v2/search?q=God&case_sensitive=true'
+curl 'http://localhost:8000/bible/v2/search?q=god&case_sensitive=true'
+```
+
+Keep the previous index until the new one has passed API and UI smoke tests. The case-preserving analyzer uses normal token matching: `match=phrase` means an exact sequence of tokens, not byte-for-byte punctuation or whitespace matching.
 
 ### Manual Setup
 
@@ -255,7 +296,7 @@ To use the public version, visit the [bible_api](https://mintz5.duckdns.org/bibl
 
 ### v2 (OpenSearch Direct)
 
-- `GET /bible/v2/search?q={query}` - OpenSearch full-text search (JSON)
+- `GET /bible/v2/search?q={query}&match={any|all|phrase}&case_sensitive={true|false}` - OpenSearch full-text search (JSON). Defaults: `match=any`, `case_sensitive=false`.
 - `GET /bible/v2/suggest?q={prefix}` - Verse prefix suggestions (JSON)
 - `PUT /bible/v2/synonyms/{set}` - Replace synonym set (JWT required)
 - `POST /bible/v2/synonyms/{set}` - Append to synonym set (JWT required)

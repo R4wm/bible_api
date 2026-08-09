@@ -45,7 +45,7 @@ func allEndpoints() []EndpointDoc {
 		{Method: "GET", Path: "/bible/{book}/{chapter}/{start-end}", Description: "Get verse range"},
 		{Method: "GET", Path: "/bible/search?q={query}", Description: "Search Bible text"},
 		{Method: "GET", Path: "/bible/random_verse", Description: "Get random verse"},
-		{Method: "GET", Path: "/bible/v2/search?q={query}", Description: "OpenSearch full-text search"},
+		{Method: "GET", Path: "/bible/v2/search?q={query}&match={any|all|phrase}&case_sensitive={true|false}", Description: "OpenSearch full-text search. match defaults to any; case_sensitive defaults to false and requires the case-preserving index mapping."},
 		{Method: "GET", Path: "/bible/v2/suggest?q={prefix}", Description: "Predictive suggestions"},
 		{Method: "PUT", Path: "/bible/v2/synonyms/{set}", Description: "Replace synonym set", Auth: "JWT (scope: synonyms:write)"},
 		{Method: "POST", Path: "/bible/v2/synonyms/{set}", Description: "Append to synonym set", Auth: "JWT (scope: synonyms:write)"},

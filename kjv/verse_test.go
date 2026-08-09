@@ -1,6 +1,10 @@
 package kjv
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestRemoveItalicMarkers(t *testing.T) {
 	v := Verse{Text: "[In] the [beginning]"}
@@ -46,7 +50,7 @@ func TestParseSuggestSearchResponseIncludesReference(t *testing.T) {
 }
 
 func TestBuildSearchBodyUsesCanonicalVerseOrder(t *testing.T) {
-	body := buildSearchBody("grace", 50, 0, map[string]string{})
+	body := buildSearchBody("grace", 50, 0, map[string]string{}, searchOptions{Match: searchMatchAny})
 	sortFields, ok := body["sort"].([]interface{})
 	if !ok || len(sortFields) != 1 {
 		t.Fatalf("expected one sort field, got %#v", body["sort"])
@@ -57,6 +61,83 @@ func TestBuildSearchBodyUsesCanonicalVerseOrder(t *testing.T) {
 	}
 	if _, ok := field["ordinal_verse"]; !ok {
 		t.Fatalf("expected ordinal_verse sort, got %#v", field)
+	}
+}
+
+func TestBuildSearchBodyMatchModes(t *testing.T) {
+	tests := []struct {
+		name      string
+		options   searchOptions
+		queryKind string
+		field     string
+		operator  string
+	}{
+		{"any words", searchOptions{Match: searchMatchAny}, "match", "text", ""},
+		{"all words", searchOptions{Match: searchMatchAll}, "match", "text", "and"},
+		{"exact phrase", searchOptions{Match: searchMatchPhrase}, "match_phrase", "text", ""},
+		{"case-sensitive all words", searchOptions{Match: searchMatchAll, CaseSensitive: true}, "match", "text.case_sensitive", "and"},
+		{"case-sensitive phrase", searchOptions{Match: searchMatchPhrase, CaseSensitive: true}, "match_phrase", "text.case_sensitive", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := buildSearchBody("Thy Word", 50, 0, map[string]string{}, tt.options)
+			query := body["query"].(map[string]interface{})["bool"].(map[string]interface{})["must"].([]interface{})[0].(map[string]interface{})
+			clause, ok := query[tt.queryKind].(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected %s clause, got %#v", tt.queryKind, query)
+			}
+			value, ok := clause[tt.field].(map[string]interface{})
+			if !ok || value["query"] != "Thy Word" {
+				t.Fatalf("expected query on %s, got %#v", tt.field, clause)
+			}
+			if got, _ := value["operator"].(string); got != tt.operator {
+				t.Fatalf("operator = %q, want %q", got, tt.operator)
+			}
+		})
+	}
+}
+
+func TestParseSearchOptions(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/bible/v2/search?q=Thy+Word&match=phrase&case_sensitive=true", nil)
+	got, err := parseSearchOptions(req)
+	if err != nil {
+		t.Fatalf("parseSearchOptions: %v", err)
+	}
+	if got.Match != searchMatchPhrase || !got.CaseSensitive {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}
+
+func TestParseSearchOptionsRejectsInvalidValues(t *testing.T) {
+	tests := []string{
+		"/bible/v2/search?q=love&match=near",
+		"/bible/v2/search?q=love&case_sensitive=perhaps",
+	}
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			if _, err := parseSearchOptions(req); err == nil {
+				t.Fatalf("parseSearchOptions(%q) returned nil error", path)
+			}
+		})
+	}
+}
+
+func TestSearchV2RejectsInvalidOptionsBeforeOpenSearchCheck(t *testing.T) {
+	app := &App{}
+	for _, path := range []string{
+		"/bible/v2/search?q=love&match=near",
+		"/bible/v2/search?q=love&case_sensitive=perhaps",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			rec := httptest.NewRecorder()
+			app.searchV2(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+			}
+		})
 	}
 }
 

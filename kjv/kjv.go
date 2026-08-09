@@ -131,6 +131,10 @@ type App struct {
 	SessionCookieSecure bool
 	GoogleClientID      string
 	InternalTokenSecret string
+	StripeSecretKey     string
+	StripeAPIBaseURL    string
+	StripeHTTP          *http.Client
+	PublicBaseURL       string
 }
 
 type Verse struct {
@@ -204,6 +208,7 @@ func (app *App) SetupRouter() {
 	app.SetupAuthRoutes()
 	app.SetupUserRoutes()
 	app.SetupDocsRoutes()
+	app.SetupDonationRoutes()
 	app.SetupUIRoutes()
 }
 
