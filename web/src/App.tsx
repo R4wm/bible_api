@@ -1175,19 +1175,25 @@ export default function App() {
           {searchTotal > searchResultsPerPage && (
             <nav className="search-pagination" aria-label="Search result pages">
               <button
+                className="pagination-button"
                 onClick={() => runSearch(query, Math.max(0, searchOffset - searchResultsPerPage))}
                 disabled={loading || searchOffset === 0}
+                aria-label="Previous page"
+                title="Previous page"
               >
-                Previous
+                <span aria-hidden="true">‹</span>
               </button>
-              <span>
+              <span className="search-pagination-status">
                 Page {Math.floor(searchOffset / searchResultsPerPage) + 1} of {Math.ceil(searchTotal / searchResultsPerPage)}
               </span>
               <button
+                className="pagination-button"
                 onClick={() => runSearch(query, searchOffset + searchResultsPerPage)}
                 disabled={loading || searchOffset + searchResultsPerPage >= searchTotal}
+                aria-label="Next page"
+                title="Next page"
               >
-                Next
+                <span aria-hidden="true">›</span>
               </button>
             </nav>
           )}

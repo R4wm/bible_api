@@ -409,13 +409,44 @@ h1, h2 {
 .search-pagination {
   align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
-  margin: 20px 0;
+  margin: 16px 0;
 }
 
-.search-pagination button {
-  min-width: 92px;
+.pagination-button {
+  align-items: center;
+  background: var(--button-bg);
+  border: 1px solid var(--button-outline);
+  border-radius: 999px;
+  color: var(--button-text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 22px;
+  font-weight: 600;
+  height: 30px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+  width: 30px;
+}
+
+.pagination-button:hover:not(:disabled) {
+  background: var(--button-bg-hover);
+  box-shadow: 0 1px 4px var(--button-shadow);
+}
+
+.pagination-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.search-pagination-status {
+  color: #666;
+  font-size: 13px;
+  min-width: 84px;
+  text-align: center;
 }
 
 /* Results */
@@ -675,6 +706,7 @@ body.theme-dark .search-bar input { background-color: #222; color: #fff; border-
 /* Chart container */
 body.theme-dark .chart-container { background: #111; border-color: #333; }
 body.theme-dark .search-result-summary { color: #bbb; }
+body.theme-dark .search-pagination-status { color: #bbb; }
 
 /* Results */
 body.theme-dark .result { border-bottom-color: #333; }
