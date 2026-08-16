@@ -20,10 +20,15 @@ const (
 // userSettings holds the per-user preferences that sync across devices.
 // Mirrors the client-side settings currently kept only in localStorage.
 type userSettings struct {
-	Theme               string `json:"theme,omitempty"`
-	Font                string `json:"font,omitempty"`
-	VerseOpenMode       string `json:"verse_open_mode,omitempty"`
-	ShowContinueReading *bool  `json:"show_continue_reading,omitempty"`
+	Theme                string `json:"theme,omitempty"`
+	Font                 string `json:"font,omitempty"`
+	VerseOpenMode        string `json:"verse_open_mode,omitempty"`
+	ShowContinueReading  *bool  `json:"show_continue_reading,omitempty"`
+	SearchResultsPerPage int    `json:"search_results_per_page,omitempty"`
+}
+
+func validSearchResultsPerPage(value int) bool {
+	return value == 10 || value == 25 || value == 50 || value == 100
 }
 
 // readPage is one entry in a user's reading history.
@@ -108,6 +113,10 @@ func (app *App) putUserSettings(w http.ResponseWriter, r *http.Request) {
 	var s userSettings
 	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if s.SearchResultsPerPage != 0 && !validSearchResultsPerPage(s.SearchResultsPerPage) {
+		jsonError(w, http.StatusBadRequest, "search_results_per_page must be 10, 25, 50, or 100")
 		return
 	}
 	payload, _ := json.Marshal(s)
