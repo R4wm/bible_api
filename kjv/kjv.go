@@ -135,6 +135,9 @@ type App struct {
 	StripeAPIBaseURL    string
 	StripeHTTP          *http.Client
 	PublicBaseURL       string
+	// NotesMaxMemoryBytes disables new note edits once Redis reaches this size.
+	// Existing notes remain readable.
+	NotesMaxMemoryBytes int64
 }
 
 type Verse struct {

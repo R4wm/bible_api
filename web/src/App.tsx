@@ -4,6 +4,7 @@ declare const Chart: any;
 
 const defaultScope = "synonyms:write";
 const suggestionPageSize = 20;
+const maxNoteLength = 10000;
 
 const BOOKS_CANONICAL_ORDER = [
   "GENESIS","EXODUS","LEVITICUS","NUMBERS","DEUTERONOMY",
@@ -59,6 +60,13 @@ type AuthConfig = {
   google_client_id?: string;
 };
 
+type UserSettings = {
+  font?: string;
+  theme?: "light" | "dark";
+  verse_open_mode?: VerseOpenMode;
+  show_continue_reading?: boolean;
+};
+
 type BooksResponse = {
   Books?: string[];
 };
@@ -88,6 +96,14 @@ type RecentPage = {
 type SearchHistory = {
   query: string;
   ts?: number;
+};
+
+type VerseNote = {
+  book: string;
+  chapter: number;
+  verse: number;
+  text: string;
+  updated_at?: number;
 };
 
 type VerseOpenMode = "new-tab" | "same-tab";
@@ -211,8 +227,16 @@ export default function App() {
     () => localStorage.getItem("bible-theme") === "light" ? "light" : "dark"
   );
   const [verseOpenMode, setVerseOpenMode] = useState<VerseOpenMode>(storedVerseOpenMode);
+  const [showContinueReading, setShowContinueReading] = useState(true);
   const [recent, setRecent] = useState<RecentPage[]>([]);
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
+  const [notes, setNotes] = useState<VerseNote[]>([]);
+  const [noteVerse, setNoteVerse] = useState<number | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState("");
+  const [notesMode, setNotesMode] = useState(false);
+  const [notesEditingEnabled, setNotesEditingEnabled] = useState(true);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("preferences");
   // True once we've pulled server-side settings for the logged-in user, so we
   // don't push local defaults back up before knowing what the server has.
@@ -235,6 +259,10 @@ export default function App() {
 
   const fontClasses = ["font-blackletter", "font-renaissance", "font-serif"];
   const selectedVerseSet = useMemo(() => new Set(selectedVerses), [selectedVerses]);
+  const notesByVerse = useMemo(
+    () => new Map(notes.map((note) => [note.verse, note])),
+    [notes],
+  );
 
   // Apply font class on mount and when font changes
   useEffect(() => {
@@ -260,15 +288,20 @@ export default function App() {
       settingsHydrated.current = false;
       setRecent([]);
       setSearchHistory([]);
+      setNotes([]);
+      setNoteVerse(null);
+      setNotesMode(false);
+      setNotesEditingEnabled(true);
       setSettingsTab("preferences");
       return;
     }
     fetch("/user/settings")
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
+      .then((data: UserSettings | null) => {
         if (data?.font) setFont(data.font);
         if (data?.theme === "light" || data?.theme === "dark") setTheme(data.theme);
         if (isVerseOpenMode(data?.verse_open_mode)) setVerseOpenMode(data.verse_open_mode);
+        if (typeof data?.show_continue_reading === "boolean") setShowContinueReading(data.show_continue_reading);
       })
       .catch(() => {})
       .finally(() => { settingsHydrated.current = true; });
@@ -281,6 +314,28 @@ export default function App() {
       .catch(() => {});
   }, [hasToken]);
 
+  // Notes are loaded only for the open chapter and only after sign-in.
+  useEffect(() => {
+    if (!hasToken || view !== "reading" || !selectedBook || !selectedChapter) {
+      setNotes([]);
+      setNoteVerse(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/user/notes?book=${encodeURIComponent(selectedBook)}&chapter=${selectedChapter}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) {
+          setNotes(Array.isArray(data?.notes) ? data.notes : []);
+          const editingEnabled = data?.editing_enabled !== false;
+          setNotesEditingEnabled(editingEnabled);
+          if (!editingEnabled) setNotesMode(false);
+        }
+      })
+      .catch(() => { if (!cancelled) setNotes([]); });
+    return () => { cancelled = true; };
+  }, [hasToken, view, selectedBook, selectedChapter]);
+
   // Push settings changes to the server, but only after hydration so we never
   // overwrite saved preferences with the local defaults on first load.
   useEffect(() => {
@@ -288,9 +343,14 @@ export default function App() {
     fetch("/user/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ font, theme, verse_open_mode: verseOpenMode }),
+      body: JSON.stringify({
+        font,
+        theme,
+        verse_open_mode: verseOpenMode,
+        show_continue_reading: showContinueReading,
+      }),
     }).catch(() => {});
-  }, [font, theme, verseOpenMode, hasToken]);
+  }, [font, theme, verseOpenMode, showContinueReading, hasToken]);
 
   useEffect(() => {
     if (view === "reading" && selectedBook && selectedChapter) {
@@ -739,12 +799,73 @@ export default function App() {
     setProfileOpen(false);
   };
 
+  const openNote = (verse: number) => {
+    if (!hasToken) return;
+    setNoteVerse(verse);
+    setNoteText(notesByVerse.get(verse)?.text || "");
+    setNoteError("");
+  };
+
+  const saveNote = async () => {
+    if (!noteVerse || !selectedBook || !selectedChapter) return;
+    const text = noteText.trim();
+    if (!text) {
+      setNoteError("Write a note before saving.");
+      return;
+    }
+    setNoteSaving(true);
+    setNoteError("");
+    try {
+      const response = await fetch("/user/notes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ book: selectedBook, chapter: selectedChapter, verse: noteVerse, text }),
+      });
+      if (!response.ok) {
+        if (response.status === 503) {
+          setNotesEditingEnabled(false);
+          setNotesMode(false);
+          setNoteError("Note editing is temporarily unavailable while storage is near capacity.");
+          return;
+        }
+        throw new Error("Unable to save note");
+      }
+      const saved: VerseNote = await response.json();
+      setNotes((current) => [...current.filter((note) => note.verse !== saved.verse), saved]);
+      setNoteText(saved.text);
+      setNoteVerse(null);
+    } catch {
+      setNoteError("Unable to save your note. Please try again.");
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
   const safeHighlight = useMemo(() => {
     return (item: SearchResult) => {
       if (!item.highlight || item.highlight.length === 0) return item.text;
       return item.highlight[0].replace(/<em>/g, "<mark>").replace(/<\/em>/g, "</mark>");
     };
   }, []);
+
+  const continueReading = hasToken && showContinueReading && (
+    <div className="recent-row">
+      <span className="recent-label">Continue reading</span>
+      {recent.length === 0 ? (
+        <span className="recent-empty">No pages read yet.</span>
+      ) : (
+        recent.slice(0, 5).map((page) => (
+          <button
+            key={`${page.book}-${page.chapter}`}
+            className="chip"
+            onClick={() => openPage(page.book, page.chapter)}
+          >
+            {BOOK_ABBREVIATIONS[page.book] ?? page.book} {page.chapter}
+          </button>
+        ))
+      )}
+    </div>
+  );
 
   return (
     <div className="app">
@@ -896,6 +1017,16 @@ export default function App() {
                   {opt.label}
                 </label>
               ))}
+              {hasToken && (
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showContinueReading}
+                    onChange={(event) => setShowContinueReading(event.target.checked)}
+                  />
+                  Show Continue Reading
+                </label>
+              )}
             </>
           )}
           {hasToken && settingsTab === "history" && (
@@ -1014,26 +1145,11 @@ export default function App() {
         </div>
       )}
 
-      {/* Continue reading: last pages read (signed-in users) */}
-      {recent.length > 0 && (
-        <div className="recent-row">
-          <span className="recent-label">Continue reading</span>
-          {recent.slice(0, 5).map((p) => (
-            <button
-              key={`${p.book}-${p.chapter}`}
-              className="chip"
-              onClick={() => openPage(p.book, p.chapter)}
-            >
-              {BOOK_ABBREVIATIONS[p.book] ?? p.book} {p.chapter}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Books list */}
       <>
+        {continueReading}
         <h2>Books</h2>
-          <div className="books-grid">
+        <div className="books-grid">
           {books.map((book) => (
             <button key={book} className="block" onClick={() => loadChapters(book)}>
               {book}
@@ -1046,6 +1162,7 @@ export default function App() {
       {selectedBook && (
         <section ref={chaptersRef} className="reader-section">
           <h2>{selectedBook}</h2>
+          {continueReading}
           <div className="chapters-grid">
             {chapters.map((ch) => (
               <button key={ch} className="block" onClick={() => loadChapter(ch)}>
@@ -1058,17 +1175,85 @@ export default function App() {
 
       {/* Reading */}
       {selectedChapter > 0 && (
-        <section ref={readingRef} className="reader-section">
-          <h2>{selectedBook} {selectedChapter}{selectedVerseLabel ? `:${selectedVerseLabel}` : ""}</h2>
-          {reading.map((v) => (
-            <p
-              key={v.number}
-              id={`verse-${v.number}`}
-              className={`verse-text${selectedVerseSet.has(v.number) ? " selected-verse" : ""}`}
+        <section ref={readingRef} className="reader-section reader-layout">
+          <div className="reader-content">
+            <div className="reader-heading">
+              <h2>{selectedBook} {selectedChapter}{selectedVerseLabel ? `:${selectedVerseLabel}` : ""}</h2>
+              {hasToken && (
+                <button
+                  className={`notes-mode-toggle${notesMode ? " active" : ""}`}
+                  aria-pressed={notesMode}
+                  disabled={!notesEditingEnabled}
+                  onClick={() => {
+                    setNotesMode((enabled) => {
+                      if (enabled) setNoteVerse(null);
+                      return !enabled;
+                    });
+                  }}
+                >
+                  {notesMode ? "Exit notes mode" : "Notes mode"}
+                </button>
+              )}
+            </div>
+            {hasToken && !notesEditingEnabled && <p className="notes-unavailable">Note editing is temporarily unavailable while storage is near capacity.</p>}
+            {hasToken && notesMode && <p className="notes-hint">Notes mode is on — select a verse to add or edit a private note.</p>}
+            {reading.map((v) => (
+              <div
+                key={v.number}
+                className="verse-row"
+              >
+                <p
+                  id={`verse-${v.number}`}
+                  className={`verse-text${selectedVerseSet.has(v.number) ? " selected-verse" : ""}${notesMode ? " note-selectable" : ""}`}
+                  onClick={notesMode ? () => openNote(v.number) : undefined}
+                >
+                  <span className="verse-num">{v.number}</span> {v.text}
+                </p>
+                {notesByVerse.has(v.number) && (
+                  <button
+                    className="note-indicator"
+                    aria-label={`Open note for verse ${v.number}`}
+                    title="Open note"
+                    onClick={(event) => { event.stopPropagation(); openNote(v.number); }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          {hasToken && noteVerse !== null && (
+            <div
+              className="notes-modal-backdrop"
+              onClick={(event) => { if (event.target === event.currentTarget) setNoteVerse(null); }}
             >
-              <span className="verse-num">{v.number}</span> {v.text}
-            </p>
-          ))}
+              <aside className="notes-sidebar" role="dialog" aria-modal="true" aria-label={`Note for verse ${noteVerse}`}>
+                <div className="notes-sidebar-heading">
+                  <strong>Note · {BOOK_ABBREVIATIONS[selectedBook] ?? selectedBook} {selectedChapter}:{noteVerse}</strong>
+                  <button className="notes-close" onClick={() => setNoteVerse(null)} aria-label="Close note">×</button>
+                </div>
+                {notesMode ? (
+                  <>
+                    <textarea
+                      value={noteText}
+                      onChange={(event) => setNoteText(event.target.value)}
+                      placeholder="Write your note…"
+                      maxLength={maxNoteLength}
+                      autoFocus
+                    />
+                    <p className="note-character-count">{noteText.length.toLocaleString()} / {maxNoteLength.toLocaleString()}</p>
+                    {noteError && <p className="note-error">{noteError}</p>}
+                    <button className="note-save" onClick={saveNote} disabled={noteSaving}>
+                      {noteSaving ? "Saving…" : "Save note"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="note-display">{noteText}</p>
+                    {noteError && <p className="note-error">{noteError}</p>}
+                  </>
+                )}
+              </aside>
+            </div>
+          )}
         </section>
       )}
 
