@@ -5,6 +5,8 @@ declare const Chart: any;
 const defaultScope = "synonyms:write";
 const suggestionPageSize = 20;
 const maxNoteLength = 10000;
+const defaultSearchResultsPerPage = 50;
+const searchResultsPerPageOptions = [10, 25, 50, 100];
 
 const BOOKS_CANONICAL_ORDER = [
   "GENESIS","EXODUS","LEVITICUS","NUMBERS","DEUTERONOMY",
@@ -65,6 +67,7 @@ type UserSettings = {
   theme?: "light" | "dark";
   verse_open_mode?: VerseOpenMode;
   show_continue_reading?: boolean;
+  search_results_per_page?: number;
 };
 
 type BooksResponse = {
@@ -212,6 +215,9 @@ export default function App() {
   const [hasMoreSuggestions, setHasMoreSuggestions] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [bookCounts, setBookCounts] = useState<Record<string, number>>({});
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [searchResultsPerPage, setSearchResultsPerPage] = useState(defaultSearchResultsPerPage);
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -293,6 +299,7 @@ export default function App() {
       setNotesMode(false);
       setNotesEditingEnabled(true);
       setSettingsTab("preferences");
+      setSearchResultsPerPage(defaultSearchResultsPerPage);
       return;
     }
     fetch("/user/settings")
@@ -302,6 +309,9 @@ export default function App() {
         if (data?.theme === "light" || data?.theme === "dark") setTheme(data.theme);
         if (isVerseOpenMode(data?.verse_open_mode)) setVerseOpenMode(data.verse_open_mode);
         if (typeof data?.show_continue_reading === "boolean") setShowContinueReading(data.show_continue_reading);
+        if (searchResultsPerPageOptions.includes(data?.search_results_per_page || 0)) {
+          setSearchResultsPerPage(data!.search_results_per_page!);
+        }
       })
       .catch(() => {})
       .finally(() => { settingsHydrated.current = true; });
@@ -348,9 +358,10 @@ export default function App() {
         theme,
         verse_open_mode: verseOpenMode,
         show_continue_reading: showContinueReading,
+        search_results_per_page: searchResultsPerPage,
       }),
     }).catch(() => {});
-  }, [font, theme, verseOpenMode, showContinueReading, hasToken]);
+  }, [font, theme, verseOpenMode, showContinueReading, searchResultsPerPage, hasToken]);
 
   useEffect(() => {
     if (view === "reading" && selectedBook && selectedChapter) {
@@ -681,22 +692,34 @@ export default function App() {
     return () => window.removeEventListener("popstate", restoreLocation);
   }, []);
 
-  const runSearch = async (searchTerm?: string) => {
+  const runSearch = async (
+    searchTerm?: string,
+    from = 0,
+    pageSize = searchResultsPerPage,
+  ) => {
     const normalizedQuery = (searchTerm ?? query).trim();
     if (!normalizedQuery) return;
     setLoading(true);
     setError("");
     setSearchPerformed(true);
     try {
-      const params = new URLSearchParams({ q: normalizedQuery, match: searchMatch });
+      const params = new URLSearchParams({
+        q: normalizedQuery,
+        match: searchMatch,
+        n: String(pageSize),
+        from: String(from),
+      });
       if (caseSensitive) params.set("case_sensitive", "true");
       const resp = await fetch(`/bible/v2/search?${params.toString()}`);
       if (!resp.ok) throw new Error("Search failed");
       const data = await resp.json();
       setResults(data?.data?.results || []);
       setBookCounts(data?.data?.book_counts || {});
+      setSearchTotal(Number(data?.meta?.count) || 0);
+      setSearchOffset(Number(data?.meta?.from) || 0);
+      setQuery(normalizedQuery);
       setView("search");
-      recordSearch(normalizedQuery);
+      if (from === 0) recordSearch(normalizedQuery);
     } catch {
       setError("Search failed. Check the API.");
     } finally {
@@ -847,6 +870,11 @@ export default function App() {
       return item.highlight[0].replace(/<em>/g, "<mark>").replace(/<\/em>/g, "</mark>");
     };
   }, []);
+
+  const updateSearchResultsPerPage = (value: number) => {
+    setSearchResultsPerPage(value);
+    if (searchPerformed && query.trim()) runSearch(query, 0, value);
+  };
 
   const continueReading = hasToken && showContinueReading && (
     <div className="recent-row">
@@ -1018,14 +1046,27 @@ export default function App() {
                 </label>
               ))}
               {hasToken && (
-                <label className="settings-toggle">
-                  <input
-                    type="checkbox"
-                    checked={showContinueReading}
-                    onChange={(event) => setShowContinueReading(event.target.checked)}
-                  />
-                  Show Continue Reading
-                </label>
+                <>
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showContinueReading}
+                      onChange={(event) => setShowContinueReading(event.target.checked)}
+                    />
+                    Show Continue Reading
+                  </label>
+                  <label className="settings-select">
+                    Search results per page
+                    <select
+                      value={searchResultsPerPage}
+                      onChange={(event) => updateSearchResultsPerPage(Number(event.target.value))}
+                    >
+                      {searchResultsPerPageOptions.map((count) => (
+                        <option key={count} value={count}>{count}</option>
+                      ))}
+                    </select>
+                  </label>
+                </>
               )}
             </>
           )}
@@ -1102,6 +1143,11 @@ export default function App() {
       {searchPerformed && (
         <section className="search-results" ref={searchResultsRef} aria-live="polite">
           <h2>Search Results</h2>
+          <p className="search-result-summary">
+            {searchTotal === 0
+              ? "No matches"
+              : `Showing ${searchOffset + 1}–${Math.min(searchOffset + results.length, searchTotal)} of ${searchTotal.toLocaleString()} matches`}
+          </p>
           <div className="chart-container">
             <canvas ref={chartRef} />
           </div>
@@ -1126,6 +1172,25 @@ export default function App() {
               <div className="text" dangerouslySetInnerHTML={{ __html: safeHighlight(item) }} />
             </div>
           ))}
+          {searchTotal > searchResultsPerPage && (
+            <nav className="search-pagination" aria-label="Search result pages">
+              <button
+                onClick={() => runSearch(query, Math.max(0, searchOffset - searchResultsPerPage))}
+                disabled={loading || searchOffset === 0}
+              >
+                Previous
+              </button>
+              <span>
+                Page {Math.floor(searchOffset / searchResultsPerPage) + 1} of {Math.ceil(searchTotal / searchResultsPerPage)}
+              </span>
+              <button
+                onClick={() => runSearch(query, searchOffset + searchResultsPerPage)}
+                disabled={loading || searchOffset + searchResultsPerPage >= searchTotal}
+              >
+                Next
+              </button>
+            </nav>
+          )}
         </section>
       )}
 
