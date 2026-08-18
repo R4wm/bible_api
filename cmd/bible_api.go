@@ -107,6 +107,15 @@ func main() {
 	app.StripeAPIBaseURL = getEnvOrDefault("STRIPE_API_BASE_URL", "https://api.stripe.com")
 	app.StripeHTTP = &http.Client{Timeout: 15 * time.Second}
 	app.PublicBaseURL = strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/")
+	app.Analytics = kjv.NewAnalytics(os.Getenv("DATABASE_URL"))
+	app.Analytics.Cleanup()
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			app.Analytics.Cleanup()
+		}
+	}()
 	app.NormalizeAuthConfig()
 
 	// Wait for OpenSearch to be ready before starting
@@ -119,6 +128,8 @@ func main() {
 	}
 
 	app.SetupRouter()
+	router.Use(app.Analytics.HTTPMiddleware)
+	router.Handle("/metrics", app.Analytics.MetricsHandler()).Methods("GET")
 	app.InitOpenSearch()
 
 	if err := app.PreloadVerses(); err != nil {

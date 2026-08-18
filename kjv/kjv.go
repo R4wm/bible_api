@@ -135,6 +135,7 @@ type App struct {
 	StripeAPIBaseURL    string
 	StripeHTTP          *http.Client
 	PublicBaseURL       string
+	Analytics           *Analytics
 }
 
 type Verse struct {
