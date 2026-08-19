@@ -401,6 +401,43 @@ h1, h2 {
   scroll-margin-top: 12px;
 }
 
+.maps-view {
+  margin-top: 24px;
+}
+
+.map-card {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.map-card + .map-card {
+  margin-top: 16px;
+}
+
+.map-card h3 {
+  margin: 0;
+}
+
+.map-card p {
+  margin: 8px 0;
+}
+
+.map-attribution {
+  color: #666;
+  font-size: 13px;
+}
+
+.map-card img {
+  display: block;
+  width: 100%;
+  max-height: 72vh;
+  margin-top: 16px;
+  border: 1px solid #ddd;
+  object-fit: contain;
+}
+
 .search-result-summary {
   color: #666;
   margin: 0 0 12px;
@@ -675,6 +712,9 @@ body.theme-dark .search-bar input { background-color: #222; color: #fff; border-
 /* Chart container */
 body.theme-dark .chart-container { background: #111; border-color: #333; }
 body.theme-dark .search-result-summary { color: #bbb; }
+body.theme-dark .map-card { background: #111; border-color: #333; }
+body.theme-dark .map-card img { border-color: #333; }
+body.theme-dark .map-attribution { color: #bbb; }
 
 /* Results */
 body.theme-dark .result { border-bottom-color: #333; }

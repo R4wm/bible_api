@@ -116,7 +116,7 @@ type VerseSelection = {
   label: string;
 };
 
-type View = "books" | "chapters" | "reading" | "search";
+type View = "books" | "chapters" | "reading" | "search" | "maps";
 type SettingsTab = "preferences" | "history";
 type SearchMatchMode = "any" | "all" | "phrase";
 
@@ -590,6 +590,11 @@ export default function App() {
     if (updateURL) pushReaderLocation();
   };
 
+  const showMaps = () => {
+    setView("maps");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const loadChapters = (book: string, updateURL = true) => {
     setSelectedBook(book);
     setSelectedChapter(0);
@@ -975,8 +980,9 @@ export default function App() {
       {/* Menu panel */}
       {menuOpen && (
         <div className="menu-panel" ref={menuRef}>
-          <button onClick={() => { window.scrollTo({ top: 0, behavior: "smooth" }); setMenuOpen(false); }}>Books</button>
+          <button onClick={() => { showBooks(); setMenuOpen(false); }}>Books</button>
           <button onClick={() => { setView("search"); searchInputRef.current?.focus(); setMenuOpen(false); }}>Search</button>
+          <button onClick={() => { showMaps(); setMenuOpen(false); }}>Maps</button>
           <a href="/docs">Docs</a>
           <a href="/donate">Donations</a>
           <button onClick={() => setSettingsOpen(!settingsOpen)}>Settings</button>
@@ -1138,6 +1144,50 @@ export default function App() {
         </>
       )}
       {error && <div className="error">{error}</div>}
+
+      {view === "maps" ? (
+        <section className="maps-view" aria-labelledby="maps-heading">
+          <h2 id="maps-heading">Maps</h2>
+          <article className="map-card">
+            <h3>The Ministry of Jesus</h3>
+            <p>A map of locations associated with Jesus’ ministry.</p>
+            <a href="/v2/maps/the-ministry-of-jesus.svg" target="_blank" rel="noopener noreferrer">
+              Open full-size map
+            </a>
+            <p className="map-attribution">
+              Map by DEGA MD via{" "}
+              <a href="https://commons.wikimedia.org/wiki/File:The_Ministry_of_Jesus.svg" target="_blank" rel="noopener noreferrer">
+                Wikimedia Commons
+              </a>{" "}
+              (CC BY-NC-SA 4.0).
+            </p>
+            <img
+              src="/v2/maps/the-ministry-of-jesus.svg"
+              alt="Map of locations associated with the ministry of Jesus"
+              loading="lazy"
+            />
+          </article>
+          <article className="map-card">
+            <h3>Paul’s Missionary Journeys</h3>
+            <p>A map of Paul’s three missionary journeys and his journey to Rome.</p>
+            <a href="/v2/maps/pauls-missionary-journeys.png" target="_blank" rel="noopener noreferrer">
+              Open full-size map
+            </a>
+            <p className="map-attribution">
+              Map by Biblica, Inc. and Biblica Open Study Bible Resources via{" "}
+              <a href="https://commons.wikimedia.org/wiki/File:Biblica_Open_Bible_Map_16_17_Paul_missionary_journeys_map.png" target="_blank" rel="noopener noreferrer">
+                Wikimedia Commons
+              </a>{" "}(CC BY-SA 4.0).
+            </p>
+            <img
+              src="/v2/maps/pauls-missionary-journeys.png"
+              alt="English map of Paul’s three missionary journeys and his journey to Rome"
+              loading="lazy"
+            />
+          </article>
+        </section>
+      ) : (
+        <>
 
       {/* Keep search feedback next to the controls that produced it. */}
       {searchPerformed && (
@@ -1325,6 +1375,8 @@ export default function App() {
       <div className="footer">
         <span>Powered by OpenSearch</span> | <span>API docs: <a href="/docs">/docs</a></span>
       </div>
+        </>
+      )}
     </div>
   );
 }
