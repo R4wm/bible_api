@@ -1167,6 +1167,24 @@ export default function App() {
               loading="lazy"
             />
           </article>
+          <article className="map-card">
+            <h3>Paul’s Missionary Journeys</h3>
+            <p>A map of Paul’s three missionary journeys and his journey to Rome.</p>
+            <a href="/v2/maps/pauls-missionary-journeys.png" target="_blank" rel="noopener noreferrer">
+              Open full-size map
+            </a>
+            <p className="map-attribution">
+              Map by Biblica, Inc. and Biblica Open Study Bible Resources via{" "}
+              <a href="https://commons.wikimedia.org/wiki/File:Biblica_Open_Bible_Map_16_17_Paul_missionary_journeys_map.png" target="_blank" rel="noopener noreferrer">
+                Wikimedia Commons
+              </a>{" "}(CC BY-SA 4.0).
+            </p>
+            <img
+              src="/v2/maps/pauls-missionary-journeys.png"
+              alt="English map of Paul’s three missionary journeys and his journey to Rome"
+              loading="lazy"
+            />
+          </article>
         </section>
       ) : (
         <>

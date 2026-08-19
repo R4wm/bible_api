@@ -412,6 +412,10 @@ h1, h2 {
   background: #fff;
 }
 
+.map-card + .map-card {
+  margin-top: 16px;
+}
+
 .map-card h3 {
   margin: 0;
 }
