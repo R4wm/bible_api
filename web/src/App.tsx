@@ -116,9 +116,31 @@ type VerseSelection = {
   label: string;
 };
 
-type View = "books" | "chapters" | "reading" | "search" | "maps";
+type View = "books" | "chapters" | "reading" | "search";
 type SettingsTab = "preferences" | "history";
 type SearchMatchMode = "any" | "all" | "phrase";
+type MapID = "ministry-of-jesus" | "pauls-missionary-journeys";
+
+const MAPS: Record<MapID, { title: string; description: string; src: string; alt: string; sourceURL: string; credit: string; license: string }> = {
+  "ministry-of-jesus": {
+    title: "The Ministry of Jesus",
+    description: "A map of locations associated with Jesus’ ministry.",
+    src: "/v2/maps/the-ministry-of-jesus.svg",
+    alt: "Map of locations associated with the ministry of Jesus",
+    sourceURL: "https://commons.wikimedia.org/wiki/File:The_Ministry_of_Jesus.svg",
+    credit: "Map by DEGA MD",
+    license: "CC BY-NC-SA 4.0",
+  },
+  "pauls-missionary-journeys": {
+    title: "Paul’s Missionary Journeys",
+    description: "A map of Paul’s three missionary journeys and his journey to Rome.",
+    src: "/v2/maps/pauls-missionary-journeys.png",
+    alt: "English map of Paul’s three missionary journeys and his journey to Rome",
+    sourceURL: "https://commons.wikimedia.org/wiki/File:Biblica_Open_Bible_Map_16_17_Paul_missionary_journeys_map.png",
+    credit: "Map by Biblica, Inc. and Biblica Open Study Bible Resources",
+    license: "CC BY-SA 4.0",
+  },
+};
 
 type GoogleProfile = { picture?: string; name?: string; email?: string };
 
@@ -197,6 +219,7 @@ export default function App() {
   const [config, setConfig] = useState<AuthConfig>({});
 
   const [view, setView] = useState<View>("books");
+  const [selectedMapID, setSelectedMapID] = useState<MapID | "">("");
   const [books, setBooks] = useState<string[]>([]);
   const [selectedBook, setSelectedBook] = useState("");
   const [chapters, setChapters] = useState<number[]>([]);
@@ -262,6 +285,7 @@ export default function App() {
   const searchResultsRef = useRef<HTMLElement>(null);
   const chaptersRef = useRef<HTMLElement>(null);
   const readingRef = useRef<HTMLElement>(null);
+  const mapsRef = useRef<HTMLElement>(null);
 
   const fontClasses = ["font-blackletter", "font-renaissance", "font-serif"];
   const selectedVerseSet = useMemo(() => new Set(selectedVerses), [selectedVerses]);
@@ -591,8 +615,7 @@ export default function App() {
   };
 
   const showMaps = () => {
-    setView("maps");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollToSection(mapsRef);
   };
 
   const loadChapters = (book: string, updateURL = true) => {
@@ -1145,50 +1168,6 @@ export default function App() {
       )}
       {error && <div className="error">{error}</div>}
 
-      {view === "maps" ? (
-        <section className="maps-view" aria-labelledby="maps-heading">
-          <h2 id="maps-heading">Maps</h2>
-          <article className="map-card">
-            <h3>The Ministry of Jesus</h3>
-            <p>A map of locations associated with Jesus’ ministry.</p>
-            <a href="/v2/maps/the-ministry-of-jesus.svg" target="_blank" rel="noopener noreferrer">
-              Open full-size map
-            </a>
-            <p className="map-attribution">
-              Map by DEGA MD via{" "}
-              <a href="https://commons.wikimedia.org/wiki/File:The_Ministry_of_Jesus.svg" target="_blank" rel="noopener noreferrer">
-                Wikimedia Commons
-              </a>{" "}
-              (CC BY-NC-SA 4.0).
-            </p>
-            <img
-              src="/v2/maps/the-ministry-of-jesus.svg"
-              alt="Map of locations associated with the ministry of Jesus"
-              loading="lazy"
-            />
-          </article>
-          <article className="map-card">
-            <h3>Paul’s Missionary Journeys</h3>
-            <p>A map of Paul’s three missionary journeys and his journey to Rome.</p>
-            <a href="/v2/maps/pauls-missionary-journeys.png" target="_blank" rel="noopener noreferrer">
-              Open full-size map
-            </a>
-            <p className="map-attribution">
-              Map by Biblica, Inc. and Biblica Open Study Bible Resources via{" "}
-              <a href="https://commons.wikimedia.org/wiki/File:Biblica_Open_Bible_Map_16_17_Paul_missionary_journeys_map.png" target="_blank" rel="noopener noreferrer">
-                Wikimedia Commons
-              </a>{" "}(CC BY-SA 4.0).
-            </p>
-            <img
-              src="/v2/maps/pauls-missionary-journeys.png"
-              alt="English map of Paul’s three missionary journeys and his journey to Rome"
-              loading="lazy"
-            />
-          </article>
-        </section>
-      ) : (
-        <>
-
       {/* Keep search feedback next to the controls that produced it. */}
       {searchPerformed && (
         <section className="search-results" ref={searchResultsRef} aria-live="polite">
@@ -1372,11 +1351,33 @@ export default function App() {
         </section>
       )}
 
+      <section className="maps-view" ref={mapsRef} aria-labelledby="maps-heading">
+        <h2 id="maps-heading">Maps</h2>
+        <label className="maps-selector">
+          Choose a map
+          <select value={selectedMapID} onChange={(event) => setSelectedMapID(event.target.value as MapID | "")}>
+            <option value="">Select a map</option>
+            {Object.entries(MAPS).map(([id, map]) => <option key={id} value={id}>{map.title}</option>)}
+          </select>
+        </label>
+        {selectedMapID && (
+          <article className="map-card">
+            <h3>{MAPS[selectedMapID].title}</h3>
+            <p>{MAPS[selectedMapID].description}</p>
+            <a href={MAPS[selectedMapID].src} target="_blank" rel="noopener noreferrer">Open full-size map</a>
+            <p className="map-attribution">
+              {MAPS[selectedMapID].credit} via{" "}
+              <a href={MAPS[selectedMapID].sourceURL} target="_blank" rel="noopener noreferrer">Wikimedia Commons</a>{" "}
+              ({MAPS[selectedMapID].license}).
+            </p>
+            <img src={MAPS[selectedMapID].src} alt={MAPS[selectedMapID].alt} loading="lazy" />
+          </article>
+        )}
+      </section>
+
       <div className="footer">
         <span>Powered by OpenSearch</span> | <span>API docs: <a href="/docs">/docs</a></span>
       </div>
-        </>
-      )}
     </div>
   );
 }
