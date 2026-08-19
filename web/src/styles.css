@@ -403,6 +403,22 @@ h1, h2 {
 
 .maps-view {
   margin-top: 24px;
+  scroll-margin-top: 12px;
+}
+
+.maps-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 360px;
+  margin: 0 auto 16px;
+  font-weight: 600;
+}
+
+.maps-selector select {
+  min-height: 40px;
+  padding: 8px;
+  font: inherit;
 }
 
 .map-card {
@@ -712,6 +728,7 @@ body.theme-dark .search-bar input { background-color: #222; color: #fff; border-
 /* Chart container */
 body.theme-dark .chart-container { background: #111; border-color: #333; }
 body.theme-dark .search-result-summary { color: #bbb; }
+body.theme-dark .maps-selector select { background: #222; border-color: #444; color: #fff; }
 body.theme-dark .map-card { background: #111; border-color: #333; }
 body.theme-dark .map-card img { border-color: #333; }
 body.theme-dark .map-attribution { color: #bbb; }
