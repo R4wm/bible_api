@@ -1,20 +1,31 @@
 # Bible API
 
-## Quick URLs (Local)
+A Go REST API and React UI for reading and searching the King James Bible.
+
+## Quick URLs
+
+Local (Docker Compose on the API box):
 
 - API base: `http://localhost:8000`
+- Web UI: `http://localhost:8000/v2`
 - Book listing: `http://localhost:8000/bible/list_books`
 - Search: `http://localhost:8000/bible/search?q=grace`
 - Autocomplete: `http://localhost:8000/bible/suggest?q=gra`
 - Random verse: `http://localhost:8000/bible/random_verse`
-- Web UI: `http://localhost:8000/v2`
+- API docs: `http://localhost:8000/docs`
 - OpenSearch: `http://localhost:9200`
 - OpenSearch Dashboards: `http://localhost:5601`
-- API docs: `http://localhost:8000/docs`
+
+Public (nginx path prefix on prsmusa.com):
+
+- UI: https://prsmusa.com/bible/v2
+- Preview image: https://prsmusa.com/bible/v2/og-image.png
+- Docs: https://prsmusa.com/docs
+- Landing link: https://prsmusa.com/
 
 > If search returns `lookup opensearch on 127.0.0.11:53: no such host`, the API container can't resolve the `opensearch` service name. Start all services via `docker compose` so they share the same network.
 
-> OpenSearch 2.12+ requires an initial admin password. Set `OPENSEARCH_INITIAL_ADMIN_PASSWORD` in your environment before running `docker compose up`.
+> OpenSearch 2.12+ requires an initial admin password. Set `OPENSEARCH_INITIAL_ADMIN_PASSWORD` in `.env` before `docker compose up`. Security is disabled in this compose file; the variable is still required by the image.
 
 - A raw high performance RESTful API written in Go
 - King James Version Pure Cambridge Text
@@ -23,16 +34,11 @@
 - Font settings: choose from Default, Blackletter (Gothic), Renaissance, or Classic Serif — persists via localStorage
 - All Bible text preloaded into memory at startup for instant reads (zero OpenSearch latency for chapter/verse/random)
 - Easy navigation
-  - [Simple book listing and buttons choice](https://mintz5.duckdns.org/bible/list_books)
-  - [Random Verse Generator](https://mintz5.duckdns.org/bible/random_verse)
-  - [All pages support json output](https://mintz5.duckdns.org/bible/random_verse?json=true)
-    - provide argument: `?json=true`
-  - Forward chapter button (if applicable)
-  - Previous chapter button (if applicable)
-  - Books link button in Chapter selection
-  - [Supports verse ranges](https://mintz5.duckdns.org/bible/EPHESIANS/2/8-9)
-  - Search feature with per-book chart visualization
-    - Example: `https://mintz5.duckdns.org/bible/search?q=heart`
+  - [Simple book listing](https://prsmusa.com/bible/list_books)
+  - [Random Verse](https://prsmusa.com/bible/random_verse)
+  - [JSON output](https://prsmusa.com/bible/random_verse?json=true) (`?json=true`)
+  - Forward / previous chapter, books list, [verse ranges](https://prsmusa.com/bible/EPHESIANS/2/8-9)
+  - Search with per-book chart: `https://prsmusa.com/bible/search?q=heart`
   - Predictive search bar on every page (autocomplete via OpenSearch)
 
 ## Features
@@ -50,9 +56,10 @@
 
 ### Architecture
 
-- **OpenSearch** — all Bible content reads, full-text search, autocomplete suggestions
-- **Redis** — rate limiting, session storage
-- No SQLite dependency. OpenSearch is the sole data source for Bible content.
+- **OpenSearch** — Bible content search and autocomplete (`kjv_v2` index). Chapter/verse/random reads are served from an in-memory preload after startup.
+- **Redis** — rate limiting, session storage, notes safety gate
+- **Postgres** — optional 3-year activity audit (`DATABASE_URL`). Empty URL disables durable analytics; Prometheus `/metrics` still works.
+- **React UI** — Vite app in `web/`, baked into the Docker image at `web/dist` and served at `/v2`
 
 ### Donations (Stripe Checkout)
 
@@ -90,7 +97,10 @@ cd bible_api
 # Set the required OpenSearch admin password
 export OPENSEARCH_INITIAL_ADMIN_PASSWORD=YourStrongPassword123!
 
-# Start all services (OpenSearch, Redis, Bible API)
+# Copy env template and fill OPENSEARCH_INITIAL_ADMIN_PASSWORD
+cp .env.example .env
+
+# Start OpenSearch, Redis, and Bible API (Postgres is an optional profile)
 docker compose up -d
 
 # Verify the service is running
@@ -158,73 +168,93 @@ go build -o bible_api cmd/bible_api.go
 
 ## Production Topology
 
-The public deployment at **prsmusa.com** splits the data plane from the API plane across two hosts joined by a WireGuard tunnel.
+The public site at **prsmusa.com** is an nginx edge. The API, UI, Redis, and OpenSearch all run in Docker on a home host (`baser4wm@10.0.0.68`). A reverse SSH tunnel publishes the API onto loopback on the edge — the Bible process is not installed on the Linode.
 
 ```
-                        prsmusa.com (Linode)                    Home network
-                        --------------------                    ------------
-   Internet ──HTTPS──▶  nginx :443 ──path-route──▶ bible_api          OpenSearch
-                              │                   :8000 ◀──WireGuard──▶ :9200
-                              │                     │       (wg0)        (Pi)
-                              ├─/bible/  ─────────▶ │
-                              ├─/v2/     ─────────▶ │
-                              ├─/auth/   ─────────▶ │
-                              ├─/docs    ─────────▶ │
-                              └─/        ─────────▶ Other Docker apps :81
-                                                    │
-                                                    └─▶ Redis :6379 (local)
+  Internet
+     │
+     ▼
+  nginx :443  (r4wm@prsmusa.com / Linode)
+     │  TLS + path routing
+     │  /etc/nginx/sites-enabled/prsmusa.com
+     │  snippets: prsmusa-bible-user-api.conf, prsmusa-bible-legacy-prefix.conf
+     │
+     ├─ /                    static landing page  /var/www/prsmusa.com
+     ├─ /bible/v2            proxy → 127.0.0.1:18000/v2   (sub_filter rewrites "/v2/" → "/bible/v2/")
+     ├─ /bible/v2/search     proxy → 127.0.0.1:18000      (must stay more specific than the UI prefix)
+     ├─ /bible/, /auth/, /user/, /donate, /docs
+     │                       proxy → 127.0.0.1:18000
+     └─ /v2                  308 → /bible/v2
+            │
+            ▼
+  ssh -R 127.0.0.1:18000:127.0.0.1:8000   r4wm@172.236.115.113
+  (started on the API box by crontab @reboot → ~/bin/prsmusa-bible-tunnel)
+            │
+            ▼
+  Docker on 10.0.0.68
+     bible_api :8000   (image built from this repo's Dockerfile)
+     redis :6379
+     opensearch :9200
+     opensearch_dashboards :5601
 ```
 
-### Linode (API host)
+### Edge (prsmusa.com)
 
-- **nginx** terminates TLS on `:443` and proxies the bible_api paths (`/bible/`, `/v2/`, `/auth/`, `/docs`, `/docs.json`) to `127.0.0.1:8000`. Other paths fall through to unrelated Docker apps on `:81`. The site config lives at `/etc/nginx/sites-enabled/prsmusa.nginx.conf`.
-- **bible_api** runs natively (not in Docker) under systemd as the `r4wm` user.
-  - Unit: `/etc/systemd/system/bible_api.service` (a copy of [bible_api.service](bible_api.service))
-  - Binary: `/usr/local/bin/bible_api` (installed via [install.sh](install.sh))
-  - `WorkingDirectory=/opt/bible_api`
-  - `Environment="UI_DIST_DIR=/opt/bible_api/web/dist"` — the React bundle lives at this path; the Go server reads it from disk at runtime via `http.FileServer` (see [kjv/ui.go](kjv/ui.go)). No `go:embed`, so frontend-only changes do **not** require rebuilding the Go binary.
-  - `Environment="OPENSEARCH_URL=http://<pi-wg-ip>:9200"` — points across the tunnel to the Pi.
-  - The unit has `After=wg-quick@wg0.service` so the API doesn't start before the tunnel is up.
-- **Redis** runs on the host at `localhost:6379` (rate limiting + sessions).
-- The Linode does **not** have `npm` installed. The React bundle must be built elsewhere and shipped.
+- nginx terminates Let's Encrypt TLS and path-routes Bible traffic to **loopback :18000**, not to a local binary.
+- The Vite app is built with `base: "/v2/"`. nginx `sub_filter` rewrites those asset URLs to `/bible/v2/` for the public prefix.
+- OG / Twitter tags in `web/index.html` use **absolute** `https://prsmusa.com/bible/v2/...` URLs. Scrapers do not run JavaScript and do not resolve relative paths. The card image is `web/public/og-image.png` (regenerate with `python3 scripts/make_og_image.py`).
+- There is no `bible_api.service`, no `/opt/bible_api`, and no `/usr/local/bin/bible_api` on this host. Do not rsync a Go binary here.
 
-### Home (data host)
+### API box (10.0.0.68)
 
-- Raspberry Pi running **OpenSearch 2.x** on `:9200`.
-- Reachable from the Linode only via WireGuard (`wg0`); not exposed publicly.
-- Indexed once with `scripts/index_kjv_to_opensearch.py` against the Pi's OpenSearch URL.
+- Repo: `~/github/bible_api`
+- `docker compose` project `bible_api`. Container name `bible_api` publishes `0.0.0.0:8000`.
+- Dockerfile builds the React UI (`web/`) then the Go binary. The running server reads `web/dist` from disk (`kjv/ui.go`).
+- Reverse tunnel: `~/bin/prsmusa-bible-tunnel` (`ssh -R 127.0.0.1:18000:127.0.0.1:8000`). Keepalive is in the ssh options; crontab restarts it at boot with `flock`.
+- `.env` is compose interpolation only (`STRIPE_SECRET_KEY`, `PUBLIC_BASE_URL`, `OPENSEARCH_INITIAL_ADMIN_PASSWORD`). Do not commit it.
 
-### Deploy procedure (prsmusa.com)
+### Deploy (this is the live path)
 
-`scripts/deploy.sh` (driven by `make deploy*` targets) builds locally, rsyncs to `r4wm@prsmusa.com`, and restarts `bible_api.service`. The Go binary is cross-compiled `CGO_ENABLED=0 GOOS=linux GOARCH=amd64` so the static ELF dodges glibc skew between dev box and Linode. The binary lands in `/tmp/` first and is moved into `/usr/local/bin/bible_api` via `sudo install -m 755` — atomic rename, no rsync-as-root.
+Run **on 10.0.0.68** from the repo root:
 
 ```bash
-make deploy           # frontend + Go binary, then restart service
-make deploy-ui        # frontend only (web/dist/) — fast iteration on App.tsx
-make deploy-backend   # Go binary only, then restart
-make deploy-dry       # full deploy without the systemctl restart
+make deploy          # tag rollback image, docker compose up -d --build --no-deps bible_api, smoke-test
+make deploy-check    # curl local /health and https://prsmusa.com/bible/v2 (OG tags + image)
 ```
 
-Override the target host:
+`scripts/deploy.sh` leaves Redis and OpenSearch running. It does not start Postgres. After a successful rebuild the previous image is tagged `bible_api-bible_api:rollback-<UTC>`.
+
+A hot-swap of `web/dist` inside the running container is possible (`kjv/ui.go` serves files from disk) but is **not durable**. The next `make deploy` or `docker compose up --build` replaces the container from the image. Commit UI changes and rebuild.
+
+### Optional Postgres analytics
+
+Durable login/chapter/search history is behind compose profile `analytics`. The live public container currently runs with `DATABASE_URL` unset (Prometheus `/metrics` only).
 
 ```bash
-BIBLE_API_DEPLOY_HOST=r4wm@other.host make deploy
-# or
-./scripts/deploy.sh --host r4wm@other.host
-```
+# .env
+POSTGRES_PASSWORD=pick-a-secret
+DATABASE_URL=postgresql://bible_api:pick-a-secret@postgres:5432/bible_api?sslmode=disable
 
-The script requires `npm`, `go`, `rsync`, `ssh` locally, and passwordless SSH + `sudo` on the target.
+docker compose --profile analytics up -d postgres
+docker compose up -d --no-deps bible_api
+```
 
 ### Verifying a deploy
 
 ```bash
-curl -I https://prsmusa.com/v2/                                  # 200 from the Go server
-curl -s https://prsmusa.com/bible/random_verse?json=true | head  # OpenSearch round-trip across WG
-sudo systemctl status bible_api --no-pager                       # on the Linode
-sudo journalctl -u bible_api -n 50 --no-pager                    # on the Linode
+# on 10.0.0.68
+curl -sf http://127.0.0.1:8000/health
+docker compose logs --tail 50 bible_api
+pgrep -af 'ssh .*18000:127.0.0.1:8000'    # reverse tunnel
+
+# from anywhere
+curl -sI https://prsmusa.com/bible/v2
+curl -s https://prsmusa.com/bible/v2 | grep og:image
+curl -sI https://prsmusa.com/bible/v2/og-image.png     # Content-Type: image/png
+curl -s 'https://prsmusa.com/bible/random_verse?json=true' | head
 ```
 
-If `random_verse` hangs or 5xx's, the WireGuard tunnel to the Pi is the first thing to check (`sudo wg show`, `sudo systemctl status wg-quick@wg0`).
+If the public UI 502s but `curl localhost:8000/health` works on the API box, the reverse tunnel is down — restart `~/bin/prsmusa-bible-tunnel`. If verse endpoints are empty, OpenSearch is down or the `kjv_v2` index was not loaded.
 
 ## Rate Limiting
 
@@ -279,7 +309,7 @@ curl "http://localhost:8000/bible/suggest?q=grace"
 ./test_logging.sh
 ```
 
-To use the public version, visit the [bible_api](https://mintz5.duckdns.org/bible/list_books)
+To use the public version, visit [https://prsmusa.com/bible/v2](https://prsmusa.com/bible/v2).
 
 ## API Endpoints
 
@@ -380,8 +410,14 @@ cd web
 npm run build
 ```
 
-The Go server serves `web/dist` at `/v2`.
-Docker builds the UI automatically during image build.
+The Go server serves `web/dist` at `/v2`. Docker builds the UI during image build.
+
+Link-preview tags live in `web/index.html` (Open Graph + Twitter). The card image is `web/public/og-image.png`. Vite copies `public/` into `dist/` unchanged. After changing the card art:
+
+```bash
+python3 scripts/make_og_image.py
+make deploy
+```
 
 ### Environment Variables
 
@@ -400,6 +436,9 @@ SESSION_COOKIE_NAME=bible_api_session
 SESSION_COOKIE_SECURE=false
 INTERNAL_TOKEN_SECRET=change_me
 GOOGLE_CLIENT_ID=your-google-client-id
+PUBLIC_BASE_URL=https://prsmusa.com
+STRIPE_SECRET_KEY=
+DATABASE_URL=   # empty = no Postgres audit trail
 ```
 
 ## Legacy Text Sources
@@ -459,13 +498,13 @@ bible_api/
 │   └── rate_limiter.go      # Redis-based rate limiting
 ├── assets/
 │   └── texts/               # Legacy plain-text Bible translations
-├── web/                      # React UI (served at /v2)
+├── web/                      # React UI (served at /v2, public OG image in web/public/)
 ├── scripts/
-│   ├── deploy.sh                   # Build + rsync + systemctl restart on prsmusa.com
+│   ├── deploy.sh                   # Rebuild bible_api container on this host
+│   ├── make_og_image.py            # Render web/public/og-image.png
 │   └── index_kjv_to_opensearch.py  # Index Bible data into OpenSearch
-├── docker-compose.yml        # OpenSearch + Redis + Bible API
+├── docker-compose.yml        # OpenSearch + Redis + Bible API (+ optional postgres profile)
 ├── Dockerfile
-├── start_with_redis.sh
 ├── test_rate_limit.sh
 ├── test_logging.sh
 └── RATE_LIMITING.md

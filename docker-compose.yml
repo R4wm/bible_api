@@ -1,10 +1,13 @@
 services:
+  # Optional 3-year activity audit. Not used by the live public stack today.
+  # Enable with: POSTGRES_PASSWORD=... DATABASE_URL=... docker compose --profile analytics up -d
   postgres:
+    profiles: ["analytics"]
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-bible_api}
       POSTGRES_USER: ${POSTGRES_USER:-bible_api}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -86,10 +89,9 @@ services:
       - INTERNAL_TOKEN_SECRET=change_me
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8000}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-bible_api}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-bible_api}?sslmode=disable
+      # Empty disables durable analytics (Prometheus /metrics still works).
+      - DATABASE_URL=${DATABASE_URL:-}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       opensearch:
