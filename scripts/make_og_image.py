@@ -27,9 +27,11 @@ RULE = (214, 201, 189)
 SERIF_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"
 SERIF_REGULAR = "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"
 
+# Only the KJV is indexed and served. Other texts in assets/texts are raw
+# files with standalone import scripts; do not advertise them here.
 TITLE = "Bible API"
 SUBTITLE = "Full-text search across the King James Bible"
-TRANSLATIONS = "KJV  ·  ASV  ·  NET  ·  GENEVA  ·  TYNDALE  ·  COVERDALE  ·  WEB"
+FEATURES = "SEARCH  ·  AUTOCOMPLETE  ·  VERSE RANGES  ·  JSON API"
 FOOTER = "prsmusa.com/bible/v2"
 
 ACCENT_BAR_W = 18
@@ -59,7 +61,7 @@ def main() -> None:
 
     title_font = font(SERIF_BOLD, 132)
     subtitle_font = font(SERIF_REGULAR, 44)
-    translations_font = font(SERIF_BOLD, 24)
+    features_font = font(SERIF_BOLD, 24)
     footer_font = font(SERIF_REGULAR, 30)
 
     x = ACCENT_BAR_W + MARGIN_X
@@ -69,7 +71,7 @@ def main() -> None:
     draw.text((x, 300), TITLE, font=title_font, fill=INK, anchor="ls")
     draw.line([x, 340, x + 220, 340], fill=DEEP_RED, width=6)
     draw.text((x, 420), SUBTITLE, font=subtitle_font, fill=MUTED, anchor="ls")
-    draw_tracked(draw, (x, 470), TRANSLATIONS, translations_font, DEEP_RED, 2)
+    draw_tracked(draw, (x, 470), FEATURES, features_font, DEEP_RED, 2)
     draw.text((x, HEIGHT - 72), FOOTER, font=footer_font, fill=MUTED, anchor="ls")
 
     out = Path(__file__).resolve().parent.parent / "web" / "public" / "og-image.png"
