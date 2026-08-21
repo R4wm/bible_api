@@ -103,7 +103,7 @@ func (app *App) googleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := app.createSession(w, sessionData{
+	session := sessionData{
 		Token:   token,
 		Sub:     payload.Subject,
 		Scope:   scope,
@@ -111,9 +111,13 @@ func (app *App) googleToken(w http.ResponseWriter, r *http.Request) {
 		Picture: claimString(payload.Claims, "picture"),
 		Name:    claimString(payload.Claims, "name"),
 		Email:   claimString(payload.Claims, "email"),
-	}); err != nil {
+	}
+	if err := app.createSession(w, session); err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to create session")
 		return
+	}
+	if app.Analytics != nil {
+		app.Analytics.RecordAuth(r, session, "login")
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -189,6 +193,9 @@ func (app *App) authMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) authLogout(w http.ResponseWriter, r *http.Request) {
+	if session, err := app.getSession(r); err == nil && app.Analytics != nil {
+		app.Analytics.RecordAuth(r, *session, "logout")
+	}
 	_ = app.deleteSession(w, r)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "ok",

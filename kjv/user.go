@@ -194,6 +194,9 @@ func (app *App) postUserHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"pages": updated})
+	if app.Analytics != nil {
+		app.Analytics.RecordActivity(r, sub, "chapter_read", map[string]interface{}{"book": book, "chapter": req.Chapter})
+	}
 }
 
 func (app *App) postUserSearchHistory(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +241,9 @@ func (app *App) postUserSearchHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"searches": updated})
+	if app.Analytics != nil {
+		app.Analytics.RecordActivity(r, sub, "search", map[string]string{"query": query})
+	}
 }
 
 // getUserNotes returns notes for a single chapter, keeping each reader load

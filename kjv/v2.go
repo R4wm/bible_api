@@ -97,13 +97,21 @@ func (app *App) InitOpenSearch() {
 }
 
 func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	result := "error"
+	defer func() {
+		app.Analytics.RecordSearch("v2", result, time.Since(started))
+	}()
+
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
+		result = "invalid"
 		jsonError(w, http.StatusBadRequest, "q is required")
 		return
 	}
 	options, err := parseSearchOptions(r)
 	if err != nil {
+		result = "invalid"
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -149,6 +157,7 @@ func (app *App) searchV2(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, "Failed to parse search response")
 		return
 	}
+	result = "ok"
 
 	out := v2SearchResponse{
 		Status: "ok",
