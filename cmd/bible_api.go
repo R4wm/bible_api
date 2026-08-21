@@ -128,7 +128,7 @@ func main() {
 	}
 
 	app.SetupRouter()
-	router.Use(app.Analytics.HTTPMiddleware)
+	app.Analytics.WrapRouter(router)
 	router.Handle("/metrics", app.Analytics.MetricsHandler()).Methods("GET")
 	app.InitOpenSearch()
 

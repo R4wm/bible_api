@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 
 	"net/http"
 
@@ -364,6 +365,11 @@ func (app *App) getRandomVerseFromDB() (Verse, error) {
 }
 
 func (app *App) search(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	result := "error"
+	defer func() {
+		app.Analytics.RecordSearch("v1", result, time.Since(started))
+	}()
 
 	var matches struct {
 		Verses       []Verse
@@ -375,6 +381,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 	// Handle text query
 	searchText, ok := r.URL.Query()["q"]
 	if !ok || len(searchText) < 1 {
+		result = "invalid"
 		w.Write([]byte("Ye ask, and receive not, because ye ask amiss, that ye may consume it upon your lusts."))
 		return
 	}
@@ -399,6 +406,7 @@ func (app *App) search(w http.ResponseWriter, r *http.Request) {
 		log.Printf("OpenSearch search error: %v", err)
 		return
 	}
+	result = "ok"
 
 	// Strip italic markers unless show_italics is set
 	if !showItalics {
@@ -634,6 +642,8 @@ func (app *App) getChapter(w http.ResponseWriter, r *http.Request) {
 		}
 		verses.Verses = append(verses.Verses, text)
 	}
+
+	app.Analytics.RecordChapterServed(verses.BookName, verses.Chapter)
 
 	// Add footer next chapter and previous chapter
 	if verses.Chapter <= 1 {
