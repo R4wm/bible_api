@@ -119,6 +119,12 @@ type VerseSelection = {
 type View = "books" | "chapters" | "reading" | "search";
 type SettingsTab = "preferences" | "history";
 type SearchMatchMode = "any" | "all" | "phrase";
+
+type RunSearchOptions = {
+  match?: SearchMatchMode;
+  caseSensitive?: boolean;
+  updateURL?: boolean;
+};
 type MapID = "ministry-of-jesus" | "pauls-missionary-journeys";
 
 const MAPS: Record<MapID, { title: string; description: string; src: string; alt: string; sourceURL: string; credit: string; license: string }> = {
@@ -162,6 +168,11 @@ const isVerseOpenMode = (value: unknown): value is VerseOpenMode =>
 const positiveIntParam = (value: string | null): number => {
   const parsed = Number.parseInt(value || "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const parseSearchMatch = (value: string | null): SearchMatchMode => {
+  if (value === "all" || value === "phrase") return value;
+  return "any";
 };
 
 const formatHistoryTime = (timestamp?: number): string =>
@@ -212,6 +223,21 @@ const v2ReaderURL = (book?: string, chapter?: number, verse?: number | string): 
   if (typeof verse === "string" && verse.trim()) params.set("verse", verse.trim());
   const query = params.toString();
   return query ? `/v2/?${query}` : "/v2/";
+};
+
+const v2SearchURL = (
+  q: string,
+  match: SearchMatchMode,
+  caseSensitive: boolean,
+  from = 0,
+): string => {
+  const params = new URLSearchParams({
+    q,
+    match,
+    from: String(from),
+  });
+  if (caseSensitive) params.set("case_sensitive", "true");
+  return `/v2/?${params.toString()}`;
 };
 
 export default function App() {
@@ -282,6 +308,10 @@ export default function App() {
   const chartInstance = useRef<any>(null);
   const suggestionsSentinelRef = useRef<HTMLDivElement>(null);
   const suggestionRequestRef = useRef(0);
+  const runSearchRef = useRef<
+    (searchTerm?: string, from?: number, pageSize?: number, options?: RunSearchOptions) => Promise<void>
+  >(async () => {});
+  const [linkCopied, setLinkCopied] = useState(false);
   const searchResultsRef = useRef<HTMLElement>(null);
   const chaptersRef = useRef<HTMLElement>(null);
   const readingRef = useRef<HTMLElement>(null);
@@ -605,6 +635,18 @@ export default function App() {
     }
   };
 
+  const pushSearchLocation = (
+    q: string,
+    match: SearchMatchMode,
+    caseSensitive: boolean,
+    from = 0,
+  ) => {
+    const url = v2SearchURL(q, match, caseSensitive, from);
+    if (`${window.location.pathname}${window.location.search}` !== url) {
+      window.history.pushState(null, "", url);
+    }
+  };
+
   const showBooks = (updateURL = true) => {
     setSelectedBook("");
     setSelectedChapter(0);
@@ -702,6 +744,22 @@ export default function App() {
   useEffect(() => {
     const restoreLocation = () => {
       const params = new URLSearchParams(window.location.search);
+      const q = params.get("q")?.trim();
+      if (q) {
+        const match = parseSearchMatch(params.get("match"));
+        const caseSensitive = params.get("case_sensitive") === "true";
+        const from = positiveIntParam(params.get("from"));
+        setQuery(q);
+        setSearchMatch(match);
+        setCaseSensitive(caseSensitive);
+        void runSearchRef.current(q, from, defaultSearchResultsPerPage, {
+          match,
+          caseSensitive,
+          updateURL: false,
+        });
+        return;
+      }
+
       const book = params.get("book")?.trim();
       const chapter = positiveIntParam(params.get("chapter"));
       const selection = parseVerseSelection(params.get("verse") || params.get("verses"));
@@ -724,20 +782,24 @@ export default function App() {
     searchTerm?: string,
     from = 0,
     pageSize = searchResultsPerPage,
+    options: RunSearchOptions = {},
   ) => {
     const normalizedQuery = (searchTerm ?? query).trim();
     if (!normalizedQuery) return;
+    const match = options.match ?? searchMatch;
+    const sensitive = options.caseSensitive ?? caseSensitive;
+    const updateURL = options.updateURL ?? true;
     setLoading(true);
     setError("");
     setSearchPerformed(true);
     try {
       const params = new URLSearchParams({
         q: normalizedQuery,
-        match: searchMatch,
+        match,
         n: String(pageSize),
         from: String(from),
       });
-      if (caseSensitive) params.set("case_sensitive", "true");
+      if (sensitive) params.set("case_sensitive", "true");
       const resp = await fetch(`/bible/v2/search?${params.toString()}`);
       if (!resp.ok) throw new Error("Search failed");
       const data = await resp.json();
@@ -746,12 +808,28 @@ export default function App() {
       setSearchTotal(Number(data?.meta?.count) || 0);
       setSearchOffset(Number(data?.meta?.from) || 0);
       setQuery(normalizedQuery);
+      setSearchMatch(match);
+      setCaseSensitive(sensitive);
       setView("search");
+      if (updateURL) pushSearchLocation(normalizedQuery, match, sensitive, from);
       if (from === 0) recordSearch(normalizedQuery);
     } catch {
       setError("Search failed. Check the API.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  runSearchRef.current = runSearch;
+
+  const copySearchLink = async () => {
+    const url = `${window.location.origin}${v2SearchURL(query, searchMatch, caseSensitive, searchOffset)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      setError("Could not copy link.");
     }
   };
 
@@ -1171,7 +1249,12 @@ export default function App() {
       {/* Keep search feedback next to the controls that produced it. */}
       {searchPerformed && (
         <section className="search-results" ref={searchResultsRef} aria-live="polite">
-          <h2>Search Results</h2>
+          <div className="search-results-header">
+            <h2>Search Results</h2>
+            <button type="button" className="copy-link-btn" onClick={() => void copySearchLink()}>
+              {linkCopied ? "Link copied" : "Copy link"}
+            </button>
+          </div>
           <p className="search-result-summary">
             {searchTotal === 0
               ? "No matches"
