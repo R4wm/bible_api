@@ -231,11 +231,8 @@ const v2SearchURL = (
   caseSensitive: boolean,
   from = 0,
 ): string => {
-  const params = new URLSearchParams({
-    q,
-    match,
-    from: String(from),
-  });
+  const params = new URLSearchParams({ q, match });
+  if (from > 0) params.set("from", String(from));
   if (caseSensitive) params.set("case_sensitive", "true");
   return `/v2/?${params.toString()}`;
 };
@@ -312,6 +309,7 @@ export default function App() {
     (searchTerm?: string, from?: number, pageSize?: number, options?: RunSearchOptions) => Promise<void>
   >(async () => {});
   const [linkCopied, setLinkCopied] = useState(false);
+  const linkCopiedTimeoutRef = useRef<number | null>(null);
   const searchResultsRef = useRef<HTMLElement>(null);
   const chaptersRef = useRef<HTMLElement>(null);
   const readingRef = useRef<HTMLElement>(null);
@@ -826,8 +824,14 @@ export default function App() {
     const url = `${window.location.origin}${v2SearchURL(query, searchMatch, caseSensitive, searchOffset)}`;
     try {
       await navigator.clipboard.writeText(url);
+      if (linkCopiedTimeoutRef.current !== null) {
+        window.clearTimeout(linkCopiedTimeoutRef.current);
+      }
       setLinkCopied(true);
-      window.setTimeout(() => setLinkCopied(false), 2000);
+      linkCopiedTimeoutRef.current = window.setTimeout(() => {
+        setLinkCopied(false);
+        linkCopiedTimeoutRef.current = null;
+      }, 2000);
     } catch {
       setError("Could not copy link.");
     }
@@ -1248,12 +1252,20 @@ export default function App() {
 
       {/* Keep search feedback next to the controls that produced it. */}
       {searchPerformed && (
-        <section className="search-results" ref={searchResultsRef} aria-live="polite">
+        <section className="search-results" ref={searchResultsRef}>
           <div className="search-results-header">
             <h2>Search Results</h2>
-            <button type="button" className="copy-link-btn" onClick={() => void copySearchLink()}>
+            <button
+              type="button"
+              className="copy-link-btn"
+              onClick={() => void copySearchLink()}
+              aria-describedby="copy-link-status"
+            >
               {linkCopied ? "Link copied" : "Copy link"}
             </button>
+            <span id="copy-link-status" className="sr-only" role="status" aria-live="polite">
+              {linkCopied ? "Search link copied to clipboard" : ""}
+            </span>
           </div>
           <p className="search-result-summary">
             {searchTotal === 0
