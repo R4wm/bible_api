@@ -401,6 +401,32 @@ h1, h2 {
   scroll-margin-top: 12px;
 }
 
+.search-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.search-results-header h2 {
+  margin: 0;
+}
+
+.copy-link-btn {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f7f7f7;
+  cursor: pointer;
+}
+
+.copy-link-btn:hover {
+  background: #eee;
+}
+
 .maps-view {
   margin-top: 24px;
   scroll-margin-top: 12px;
@@ -728,6 +754,8 @@ body.theme-dark .search-bar input { background-color: #222; color: #fff; border-
 /* Chart container */
 body.theme-dark .chart-container { background: #111; border-color: #333; }
 body.theme-dark .search-result-summary { color: #bbb; }
+body.theme-dark .copy-link-btn { background: #222; color: #fff; border-color: #444; }
+body.theme-dark .copy-link-btn:hover { background: #333; }
 body.theme-dark .maps-selector select { background: #222; border-color: #444; color: #fff; }
 body.theme-dark .map-card { background: #111; border-color: #333; }
 body.theme-dark .map-card img { border-color: #333; }
