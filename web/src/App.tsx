@@ -125,9 +125,9 @@ type RunSearchOptions = {
   caseSensitive?: boolean;
   updateURL?: boolean;
 };
-type MapID = "ministry-of-jesus" | "pauls-missionary-journeys";
+type MapID = "ministry-of-jesus" | "pauls-missionary-journeys" | "kingdoms-of-saul-david-solomon";
 
-const MAPS: Record<MapID, { title: string; description: string; src: string; alt: string; sourceURL: string; credit: string; license: string }> = {
+const MAPS: Record<MapID, { title: string; description: string; src: string; alt: string; sourceURL: string; credit: string; license: string; width?: number; height?: number }> = {
   "ministry-of-jesus": {
     title: "The Ministry of Jesus",
     description: "A map of locations associated with Jesus’ ministry.",
@@ -145,6 +145,17 @@ const MAPS: Record<MapID, { title: string; description: string; src: string; alt
     sourceURL: "https://commons.wikimedia.org/wiki/File:Biblica_Open_Bible_Map_16_17_Paul_missionary_journeys_map.png",
     credit: "Map by Biblica, Inc. and Biblica Open Study Bible Resources",
     license: "CC BY-SA 4.0",
+  },
+  "kingdoms-of-saul-david-solomon": {
+    title: "The Kingdoms of Saul, David, and Solomon",
+    description: "A map of the united monarchy, including the kingdom of Saul and places central to 1 Samuel.",
+    src: "/v2/maps/kingdoms-of-saul-david-solomon.webp",
+    alt: "Map of the kingdoms of Saul, David, and Solomon",
+    sourceURL: "https://commons.wikimedia.org/wiki/File:Biblica_Open_Bible_Map_06_The_Kingdoms_of_Saul_David_and_Solomon.png",
+    credit: "Map by Biblica, Inc. and Biblica Open Study Bible Resources",
+    license: "CC BY-SA 4.0",
+    width: 1600,
+    height: 2374,
   },
 };
 
@@ -1453,7 +1464,14 @@ export default function App() {
               <a href={MAPS[selectedMapID].sourceURL} target="_blank" rel="noopener noreferrer">Wikimedia Commons</a>{" "}
               ({MAPS[selectedMapID].license}).
             </p>
-            <img src={MAPS[selectedMapID].src} alt={MAPS[selectedMapID].alt} loading="lazy" />
+            <img
+              src={MAPS[selectedMapID].src}
+              alt={MAPS[selectedMapID].alt}
+              width={MAPS[selectedMapID].width}
+              height={MAPS[selectedMapID].height}
+              loading="lazy"
+              decoding="async"
+            />
           </article>
         )}
       </section>
