@@ -254,7 +254,11 @@ func buildSuggestSearchBody(query string, size, from int) map[string]interface{}
 		},
 		"highlight": map[string]interface{}{
 			"fields": map[string]interface{}{
-				"text": map[string]interface{}{},
+				"text": map[string]interface{}{
+					"fragment_size":       120,
+					"number_of_fragments": 1,
+					"no_match_size":       0,
+				},
 			},
 		},
 	}
@@ -578,6 +582,7 @@ type osSuggestSearchResp struct {
 				Chapter int    `json:"chapter"`
 				Verse   int    `json:"verse"`
 			} `json:"_source"`
+			Highlight map[string][]string `json:"highlight"`
 		} `json:"hits"`
 	} `json:"hits"`
 }
@@ -589,13 +594,17 @@ func parseSuggestSearchResponse(body []byte) ([]map[string]interface{}, int, err
 	}
 	out := make([]map[string]interface{}, 0, len(resp.Hits.Hits))
 	for _, hit := range resp.Hits.Hits {
-		out = append(out, map[string]interface{}{
+		item := map[string]interface{}{
 			"text":    hit.Source.Text,
 			"score":   hit.Score,
 			"book":    hit.Source.Book,
 			"chapter": hit.Source.Chapter,
 			"verse":   hit.Source.Verse,
-		})
+		}
+		if hl, ok := hit.Highlight["text"]; ok && len(hl) > 0 {
+			item["highlight"] = hl
+		}
+		out = append(out, item)
 	}
 	return out, resp.Took, nil
 }

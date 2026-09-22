@@ -26,6 +26,11 @@ func TestParseSuggestSearchResponseIncludesReference(t *testing.T) {
 						"book": "ROMANS",
 						"chapter": 8,
 						"verse": 28
+					},
+					"highlight": {
+						"text": [
+							"And we know that all things work together for <em>good</em> to them that love God..."
+						]
 					}
 				}
 			]
@@ -46,6 +51,10 @@ func TestParseSuggestSearchResponseIncludesReference(t *testing.T) {
 	got := suggestions[0]
 	if got["text"] == "" || got["score"] != 12.5 || got["book"] != "ROMANS" || got["chapter"] != 8 || got["verse"] != 28 {
 		t.Fatalf("suggestion did not include expected reference metadata: %#v", got)
+	}
+	hl, ok := got["highlight"].([]string)
+	if !ok || len(hl) != 1 || hl[0] == "" {
+		t.Fatalf("expected highlight snippet in suggestion: %#v", got["highlight"])
 	}
 }
 

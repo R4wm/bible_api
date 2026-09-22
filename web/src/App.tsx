@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 declare const Chart: any;
 
@@ -56,7 +56,76 @@ type Suggestion = {
   book?: string;
   chapter?: number;
   verse?: number;
+  highlight?: string[];
 };
+
+const suggestPreviewMaxLen = 100;
+
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const findSuggestMatch = (text: string, query: string): { index: number; length: number } => {
+  const trimmed = query.trim();
+  if (!trimmed) return { index: -1, length: 0 };
+
+  const lowerText = text.toLowerCase();
+  const lowerQuery = trimmed.toLowerCase();
+  const direct = lowerText.indexOf(lowerQuery);
+  if (direct >= 0) return { index: direct, length: trimmed.length };
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    const phrase = words.join(" ");
+    const phraseIndex = lowerText.indexOf(phrase.toLowerCase());
+    if (phraseIndex >= 0) return { index: phraseIndex, length: phrase.length };
+  }
+
+  const firstWord = words[0];
+  if (!firstWord) return { index: -1, length: 0 };
+  const wordIndex = lowerText.indexOf(firstWord.toLowerCase());
+  if (wordIndex >= 0) return { index: wordIndex, length: firstWord.length };
+  return { index: -1, length: 0 };
+};
+
+const centerPreviewAroundQuery = (text: string, query: string): string => {
+  const match = findSuggestMatch(text, query);
+  if (match.index < 0) {
+    if (text.length <= suggestPreviewMaxLen) return escapeHtml(text);
+    return `${escapeHtml(text.slice(0, suggestPreviewMaxLen - 1))}…`;
+  }
+
+  const matchEnd = match.index + match.length;
+  const padding = Math.max(0, Math.floor((suggestPreviewMaxLen - match.length) / 2));
+  let start = Math.max(0, match.index - padding);
+  let end = Math.min(text.length, start + suggestPreviewMaxLen);
+  if (end - start < suggestPreviewMaxLen) start = Math.max(0, end - suggestPreviewMaxLen);
+
+  const before = escapeHtml(text.slice(start, match.index));
+  const hit = escapeHtml(text.slice(match.index, matchEnd));
+  const after = escapeHtml(text.slice(matchEnd, end));
+  let html = "";
+  if (start > 0) html += "…";
+  html += `${before}<mark>${hit}</mark>${after}`;
+  if (end < text.length) html += "…";
+  return html;
+};
+
+const highlightToMarkHtml = (fragment: string) =>
+  fragment.replace(/<em>/g, "<mark>").replace(/<\/em>/g, "</mark>");
+
+function SuggestionChipText({ html }: { html: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const container = ref.current;
+    if (!container) return;
+    const mark = container.querySelector("mark");
+    if (!mark) return;
+    container.scrollLeft = mark.offsetLeft - (container.clientWidth - mark.clientWidth) / 2;
+  }, [html]);
+
+  return <span className="chip-text" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 type AuthConfig = {
   google_client_id?: string;
@@ -984,9 +1053,16 @@ export default function App() {
   const safeHighlight = useMemo(() => {
     return (item: SearchResult) => {
       if (!item.highlight || item.highlight.length === 0) return item.text;
-      return item.highlight[0].replace(/<em>/g, "<mark>").replace(/<\/em>/g, "</mark>");
+      return highlightToMarkHtml(item.highlight[0]);
     };
   }, []);
+
+  const suggestPreviewHtml = useMemo(() => {
+    return (suggestion: Suggestion) => {
+      if (suggestion.highlight?.length) return highlightToMarkHtml(suggestion.highlight[0]);
+      return centerPreviewAroundQuery(suggestion.text, suggestQuery);
+    };
+  }, [suggestQuery]);
 
   const updateSearchResultsPerPage = (value: number) => {
     setSearchResultsPerPage(value);
@@ -1248,7 +1324,7 @@ export default function App() {
                   </span>
                 )}
                 {s.book && s.chapter && s.verse && <span className="chip-separator">—</span>}
-                <span className="chip-text">{s.text}</span>
+                <SuggestionChipText html={suggestPreviewHtml(s)} />
               </button>
             ))}
           </div>

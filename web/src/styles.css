@@ -376,8 +376,21 @@ h1, h2 {
 
 .chip-text {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.chip-text::-webkit-scrollbar {
+  display: none;
+}
+
+.chip-text mark {
+  background: #ffe08a;
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
 }
 
 .chip:hover {
@@ -765,6 +778,7 @@ body.theme-dark .map-attribution { color: #bbb; }
 body.theme-dark .result { border-bottom-color: #333; }
 body.theme-dark .result .meta { color: #ddd; }
 body.theme-dark .result .text mark { background: #553; color: #fff; }
+body.theme-dark .chip-text mark { background: #553; color: #fff; }
 body.theme-dark .verse-text.selected-verse {
   background: rgba(0, 149, 205, 0.22);
 }
